@@ -6,9 +6,11 @@ Ocho rutas, sin base de datos, sin estado. Los datos se cachean en disco.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 
 from app import engine
 from app.config import Settings, settings
@@ -28,6 +30,9 @@ logging.basicConfig(
     format="%(levelname)s %(name)s %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+STATIC_DIR = Path(__file__).parent / "static"
+STATIC_INDEX = STATIC_DIR / "index.html"
 
 app = FastAPI(
     title=settings.app_name,
@@ -94,6 +99,23 @@ def _run(scenario: Scenario, cfg: Settings) -> tuple[CityState, SimulationResult
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Sección no encontrada: {exc}") from exc
     return state, result
+
+
+@app.get("/", include_in_schema=False)
+def index() -> FileResponse:
+    """Página mínima de demostración.
+
+    El mapa con Leaflet/MapLibre es la siguiente capa del MVP; esta página
+    muestra el resultado cuantitativo que genera el motor.
+    """
+    return FileResponse(STATIC_INDEX)
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+@app.get("/favicon.svg", include_in_schema=False)
+def favicon() -> FileResponse:
+    """Icono del sitio, para no dejar un 404 en cada carga de página."""
+    return FileResponse(STATIC_DIR / "favicon.svg", media_type="image/svg+xml")
 
 
 @app.get("/health", response_model=HealthResponse, tags=["sistema"])

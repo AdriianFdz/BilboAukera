@@ -55,6 +55,23 @@ def client() -> TestClient:
         yield c
 
 
+def test_index_page_is_served(client) -> None:
+    """La raíz debe devolver la página, no un 404."""
+    resp = client.get("/")
+
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert "Peatonalizar" in resp.text
+
+
+def test_favicon_is_served(client) -> None:
+    """El navegador pide favicon en cada carga: no debe devolver 404."""
+    for path in ("/favicon.ico", "/favicon.svg"):
+        resp = client.get(path)
+        assert resp.status_code == 200, path
+        assert "image/svg+xml" in resp.headers["content-type"]
+
+
 def test_health_reports_cache(client) -> None:
     body = client.get("/health").json()
 

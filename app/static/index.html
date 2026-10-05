@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MVP Peatonalizar calles · Bilbao</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg: #10141a; --card: #181d26; --line: #262d39;
+    --txt: #e6ebf2; --dim: #8b97a8; --accent: #4da3ff;
+    --pos: #3ecf8e; --neg: #ff6b6b; --warn: #ffb454;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px 20px; background: var(--bg); color: var(--txt);
+         font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 1040px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--dim); font-size: 14px; margin-bottom: 24px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+          padding: 20px; margin-bottom: 18px; }
+  h2 { font-size: 15px; margin: 0 0 14px; text-transform: uppercase;
+       letter-spacing: .06em; color: var(--dim); font-weight: 600; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+  input, select, button { background: #0d1117; color: var(--txt); border: 1px solid var(--line);
+    border-radius: 7px; padding: 9px 11px; font-size: 14px; }
+  input { min-width: 230px; }
+  button { background: var(--accent); color: #06121f; font-weight: 600; cursor: pointer; }
+  button:hover { filter: brightness(1.1); }
+  button.ghost { background: transparent; color: var(--txt); font-weight: 500; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 10px; }
+  .kpi { background: #0d1117; border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+  .kpi .k { font-size: 11.5px; color: var(--dim); text-transform: uppercase; letter-spacing: .04em; }
+  .kpi .v { font-size: 21px; font-weight: 650; margin-top: 3px; }
+  .pos { color: var(--pos); } .neg { color: var(--neg); } .zero { color: var(--dim); }
+  .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .tag { font-size: 12.5px; padding: 5px 11px; border-radius: 999px;
+         border: 1px solid var(--line); background: #0d1117; }
+  .tag.LOW, .tag.POSITIVE, .tag.FAVORABLE { color: var(--pos); border-color: #1e5c43; }
+  .tag.HIGH, .tag.NEGATIVE, .tag.REVIEW_REQUIRED { color: var(--neg); border-color: #6b2626; }
+  .tag.ACCEPTABLE { color: var(--warn); border-color: #6b5426; }
+  ul { margin: 8px 0 0; padding-left: 20px; color: var(--warn); font-size: 13.5px; }
+  li { margin-bottom: 3px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--line); }
+  th { color: var(--dim); font-weight: 500; font-size: 12px; text-transform: uppercase; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .note { color: var(--dim); font-size: 13px; margin-top: 12px; }
+  .warnbar { background: #2a2010; border: 1px solid #6b5426; color: var(--warn);
+             padding: 10px 13px; border-radius: 8px; font-size: 13.5px; margin-bottom: 18px; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 780px) { .split { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Peatonalizar calles · MVP</h1>
+  <div class="sub">
+    Laboratorio urbano digital. Datos reales de Bilbao (Abando / Indautxu).
+    Estimaciones de un modelo de reglas, no predicciones.
+  </div>
+
+  <div class="warnbar">
+    El mapa es la siguiente capa. Esta página muestra el resultado cuantitativo,
+    que es lo que genera el motor de simulación.
+  </div>
+
+  <div class="card">
+    <h2>Escenario</h2>
+    <div class="row">
+      <input id="street" placeholder="Calle: Gran Vía, Heros, 328…" value="Gran Vía">
+      <select id="action">
+        <option value="close">Peatonalizar (cierre total)</option>
+        <option value="traffic_restriction">Restricción parcial</option>
+      </select>
+      <label style="color:var(--dim);font-size:13px">
+        Allowed ratio <input id="ratio" type="number" min="0" max="1" step="0.05"
+               value="0.6" style="min-width:80px">
+      </label>
+      <button onclick="run()">Simular y evaluar</button>
+      <button class="ghost" onclick="loadDemo()">Cargar demo</button>
+    </div>
+    <div id="target" class="note"></div>
+  </div>
+
+  <div class="split">
+    <div class="card"><h2>KPIs</h2><div class="kpis" id="kpis"></div></div>
+    <div class="card"><h2>Jev</h2><div id="jev"></div></div>
+  </div>
+
+  <div class="card"><h2>Secciones afectadas</h2><div id="impacts"></div></div>
+  <div class="card"><h2>Notas del modelo</h2><div id="notes" class="note"></div></div>
+
+  <div class="card"><h2>Escenarios de demostración</h2><div id="demo"></div></div>
+
+  <div class="note">
+    API: <a href="/docs" style="color:var(--accent)">/docs</a> ·
+    <a href="/demo" style="color:var(--accent)">/demo</a> ·
+    <a href="/health" style="color:var(--accent)">/health</a>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const pct = (v) => (v > 0 ? '+' : '') + Number(v).toFixed(1) + '%';
+const cls = (v, goodUp) =>
+  Math.abs(v) < 0.05 ? 'zero' : ((v > 0) === goodUp ? 'pos' : 'neg');
+
+async function run() {
+  const action = $('action').value;
+  const params = action === 'traffic_restriction' ? { allowed_ratio: Number($('ratio').value) } : {};
+  const body = { street_id: $('street').value.trim(), action, params };
+  $('kpis').innerHTML = $('jev').innerHTML = $('impacts').innerHTML = $('notes').innerHTML =
+    '<span class="note">Simulando…</span>';
+  try {
+    const r = await fetch('/evaluate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || r.statusText);
+    render(d.simulation, d.jev);
+  } catch (e) {
+    $('kpis').innerHTML = `<span class="neg">${e.message}</span>`;
+  }
+}
+
+function render(sim, jev) {
+  const t = sim.scenario;
+  $('target').textContent =
+    `Escenario "${t.action}" sobre ${t.street_id}` +
+    (t.start ? ` · ${t.start}–${t.end}` : '') +
+    (Object.keys(t.params || {}).length ? ` · ${JSON.stringify(t.params)}` : '');
+
+  const k = sim.kpis;
+  const rows = [
+    ['tráfico', k.traffic_change, false],
+    ['emisiones', k.emissions_change, false],
+    ['t. desplazamiento', k.travel_time_change, false],
+    ['peatones', k.pedestrian_change, true],
+    ['comercio (potencial)', k.commercial_activity_change, true],
+    ['accesibilidad', k.accessibility_change, true],
+  ];
+  $('kpis').innerHTML = rows.map(([label, v, goodUp]) =>
+    `<div class="kpi"><div class="k">${label}</div>
+     <div class="v ${cls(v, goodUp)}">${pct(v)}</div></div>`).join('') +
+    `<div class="kpi"><div class="k">fuera de la zona</div>
+     <div class="v">${Math.round(sim.displaced_outside_zone)}</div>
+     <div class="k">veh/h</div></div>` +
+    `<div class="kpi"><div class="k">sección más afectada</div>
+     <div class="v ${sim.max_section_increase_pct > 25 ? 'neg' : 'zero'}">
+     ${pct(sim.max_section_increase_pct)}</div></div>`;
+
+  $('jev').innerHTML =
+    `<div class="tags">
+       <span class="tag ${jev.overall_status}">${jev.overall_status}</span>
+     </div>
+     <table style="margin-top:12px">
+       <tr><th>Dimensión</th><th>Clasificación</th></tr>
+       <tr><td>tráfico</td><td><span class="tag ${jev.traffic_risk}">${jev.traffic_risk}</span></td></tr>
+       <tr><td>ambiental</td><td><span class="tag ${jev.environmental_impact}">${jev.environmental_impact}</span></td></tr>
+       <tr><td>comercial</td><td><span class="tag ${jev.commercial_impact}">${jev.commercial_impact}</span></td></tr>
+       <tr><td>accesibilidad</td><td><span class="tag ${jev.accessibility_impact}">${jev.accessibility_impact}</span></td></tr>
+       <tr><td>confianza</td><td>${Math.round(jev.confidence * 100)}%</td></tr>
+     </table>` +
+    (jev.alerts.length ? `<ul>${jev.alerts.map(a => `<li>${a}</li>`).join('')}</ul>` : '');
+
+  const rowsImp = sim.impacts.filter(i => Math.abs(i.change_pct) > 0.05)
+    .sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct));
+  $('impacts').innerHTML = rowsImp.length
+    ? `<table><thead><tr><th>Sección</th><th>Calle</th>
+       <th class="num">Antes</th><th class="num">Después</th><th class="num">Δ</th></tr></thead><tbody>` +
+      rowsImp.map(i => `<tr><td>${i.section_id}</td><td>${i.name || '—'}</td>
+        <td class="num">${Math.round(i.baseline_vehicles_per_hour)}</td>
+        <td class="num">${Math.round(i.simulated_vehicles_per_hour)}</td>
+        <td class="num ${i.change_pct > 0 ? 'neg' : 'pos'}">${pct(i.change_pct)}</td></tr>`).join('') +
+      '</tbody></table>'
+    : '<span class="note">Sin cambios por sección.</span>';
+
+  $('notes').innerHTML = (sim.notes || []).map(n => '• ' + n).join('<br>');
+}
+
+async function loadDemo() {
+  const d = await (await fetch('/demo')).json();
+  $('demo').innerHTML =
+    `<div class="note">${d.city} · ${d.zone} · calle: <b>${d.street.display_name || d.street.name}</b>
+      (sección ${d.street.id}, OSM: ${d.street.name})</div>
+     <table style="margin-top:10px"><thead><tr><th>Acción</th><th class="num">Tráfico</th>
+       <th class="num">Emisiones</th><th class="num">Accesib.</th><th>Jev</th></tr></thead><tbody>` +
+    d.scenarios.map(s => `<tr><td>${s.scenario.action}</td>
+      <td class="num">${pct(s.kpis.traffic_change)}</td>
+      <td class="num pos">${pct(s.kpis.emissions_change)}</td>
+      <td class="num neg">${pct(s.kpis.accessibility_change)}</td>
+      <td><span class="tag ${s.jev.overall_status}">${s.jev.overall_status}</span></td></tr>`).join('') +
+    '</tbody></table>' +
+    `<div class="note">Cobertura: ${d.coverage.sections_in_zone} secciones en zona,
+      ${d.coverage.freshness_pct}% con lectura de hoy,
+      ${d.coverage.zero_intensity_sections} con intensidad 0.</div>`;
+}
+
+loadDemo();
+</script>
+</body>
+</html>
