@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     camaras_url: str = "https://www.bilbao.eus/aytoonline/srvDatasetCamaras?formato=geojson"
     overpass_url: str = "https://overpass-api.de/api/interpreter"
     cache_dir: str = "data"
+    #: Registro oficial de calles de Bilbao (cod_calle, nombre, tipo de vía).
+    #: Aportado como fichero local: no se descarga de ninguna API.
+    street_registry_path: str = "data/calles.csv"
 
     # --- Frescura de datos ---
     #: Secciones más antiguas que esto se marcan como no frescas.

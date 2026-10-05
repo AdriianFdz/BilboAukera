@@ -3,24 +3,157 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Peatonalizar calles · MVP</title>
+<title>Peatonalizar calles · Laboratorio urbano digital · Bilbao</title>
+<meta name="description" content="MVP del laboratorio urbano digital de Bilbao: qué pasa al pedestrianizar una calle, sobre datos reales de tráfico.">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/base.css">
 </head>
 <body>
-<div class="wrap">
-  <header class="top">
-    <h1>Peatonalizar calles · MVP</h1>
-    <div class="sub">Redirigiendo a la pantalla de datos…</div>
-  </header>
-  <div class="card">
-    <h2>Flujo</h2>
-    <div class="note">
-      <a href="/">1. Datos</a> → <a href="/escenario">2. Escenario</a> →
-      <a href="/simulacion">3. Simulación</a> → <a href="/jev">4. Jev</a>
-    </div>
+<main id="principal" class="contenido">
+  <h1>Qué pasa al pedestrianizar una calle</h1>
+  <p class="entrada">
+    Herramienta de apoyo para valorar una intervención de este tipo en el
+    distrito de Abando e Indautxu. Parte de las intensidades de tráfico que
+    mide el Ayuntamiento y termina en un veredicto estructurado, con su
+    confianza declarada.
+  </p>
+
+  <div class="aviso">
+    <h3>Alcance</h3>
+    <p>
+      Es un MVP acotado: un solo caso de uso, dos acciones posibles y un motor de
+      reglas. Los resultados son estimaciones sobre datos reales parciales. No
+      son predicciones ni recomendaciones de política urbana.
+    </p>
   </div>
-</div>
-<script>location.replace("/datos");</script>
+
+  <div class="columnas">
+    <section class="bloque">
+      <h2>El recorrido, paso a paso</h2>
+      <p class="tenue">
+        Los cuatro pasos son una secuencia real: cada uno usa lo que dejó el
+        anterior, así que conviene recorrerlos en orden.
+      </p>
+      <ol class="pasos">
+        <li>
+          <h3><a href="/datos">Datos</a></h3>
+          <p>
+            Qué se ha medido y cuánto se puede fiar uno: cobertura del feed,
+            tráfico sección a sección y de dónde sale cada magnitud.
+          </p>
+        </li>
+        <li>
+          <h3><a href="/escenario">Escenario</a></h3>
+          <p>
+            Qué calle se interviene y con qué acción, entre las 923 calles del
+            registro municipal. Marca cuáles tienen tráfico medido.
+          </p>
+        </li>
+        <li>
+          <h3><a href="/simulacion">Simulación</a></h3>
+          <p>
+            Los seis indicadores y dónde se concentra el impacto. Aquí se ve si
+            la idea aguanta o no.
+          </p>
+        </li>
+        <li>
+          <h3><a href="/jev">Jev</a></h3>
+          <p>
+            Veredicto por dimensión, con los umbrales aplicados a la vista y la
+            confianza en el dato.
+          </p>
+        </li>
+      </ol>
+    </section>
+
+    <aside>
+      <section class="bloque">
+        <h2>El estado de los datos</h2>
+        <div id="flow" class="cargando">Cargando…</div>
+      </section>
+    </aside>
+  </div>
+
+  <section class="bloque">
+    <h2>Ejemplos ya evaluados</h2>
+    <div id="quick" class="cargando">Cargando…</div>
+  </section>
+
+  <section class="bloque">
+    <h2>De dónde vienen los datos</h2>
+    <p>
+      Las intensidades de tráfico las publica el Ayuntamiento de Bilbao en
+      <span class="mono">bilbao.eus/aytoonline/srvDatasetTrafico</span>. El feed
+      no trae nombre de calle, así que se une por proximidad con la red viaria
+      de OpenStreetMap, y esa unión es derivada, no medida. Las 923 calles del
+      registro municipal son un fichero local, <span class="mono">data/calles.csv</span>.
+    </p>
+    <p>
+      Los servicios técnicos son la <a href="/docs">documentación de la API</a>,
+      el <a href="/health">estado de las fuentes</a> y el
+      <a href="/streets">registro de calles</a>.
+    </p>
+    <p>
+      La pantalla de datos lleva además un plano de la zona y, en cada punto de
+      observación, la lectura medida de la sección que vigila. Las cámaras del
+      Ayuntamiento ya no sirven instantáneas: su servicio devuelve error, así que
+      no se puede enseñar una fotografía de la calle en ese momento.
+    </p>
+  </section>
+</main>
+
+<script type="module">
+import { $, pct, esc, tag, renderChrome } from "/static/ui.js";
+
+renderChrome("/", [[]]);
+
+const ACCION_LABEL = {
+  close: "Peatonalizar, cierre total",
+  traffic_restriction: "Restricción parcial de tráfico",
+};
+
+const t = await (await fetch("/traffic")).json();
+const c = t.coverage || {};
+const st = await (await fetch("/streets?limit=1")).json();
+
+$("flow").innerHTML = `
+  <dl class="ficha">
+    <dt>Secciones medidas</dt>
+    <dd>${c.sections_in_zone ?? 0} en ${esc(t.zone || "la zona")}</dd>
+    <dt>Calles del registro</dt>
+    <dd>${st.total ?? 0}, de las que ${st.with_traffic_data ?? 0} tienen tráfico medido</dd>
+    <dt>Lectura de hoy</dt>
+    <dd><span class="valor ${c.freshness_pct >= 80 ? "baja" : c.freshness_pct >= 50 ? "" : "sube"}">${c.freshness_pct ?? 0}%</span></dd>
+    <dt>Puntos de observación</dt>
+    <dd>${(await (await fetch("/cameras")).json()).total_in_city ?? 0} en la ciudad</dd>
+  </dl>`;
+
+const d = await (await fetch("/demo")).json();
+$("quick").innerHTML = `
+  <p>
+    Sobre <b>${esc(d.street.display_name || d.street.name)}</b>, sección
+    <span class="mono">${esc(d.street.id)}</span>:
+  </p>
+  <div class="tabla-contenedor">
+    <table>
+      <thead><tr>
+        <th scope="col">Acción</th>
+        <th scope="col" class="num">Tráfico</th>
+        <th scope="col" class="num">Emisiones</th>
+        <th scope="col" class="num">Peatones</th>
+        <th scope="col">Jev</th>
+      </tr></thead><tbody>` +
+  d.scenarios.map((s) => `<tr>
+    <td>${esc(ACCION_LABEL[s.scenario.action] || s.scenario.action)}</td>
+    <td class="num">${pct(s.kpis.traffic_change)}</td>
+    <td class="num">${pct(s.kpis.emissions_change)}</td>
+    <td class="num">${pct(s.kpis.pedestrian_change)}</td>
+    <td>${tag(s.jev.overall_status)}</td></tr>`).join("") +
+  `</tbody></table>
+  </div>
+  <div class="acciones">
+    <a class="boton boton-primario" href="/escenario">Probar otro escenario</a>
+  </div>`;
+</script>
 </body>
 </html>

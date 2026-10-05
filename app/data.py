@@ -10,9 +10,12 @@ resuelve por proximidad con la red viaria de OSM.
 
 from __future__ import annotations
 
+import csv
 import json
 import logging
 import os
+import re
+import unicodedata
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -23,6 +26,7 @@ from app.schemas import (
     Provenance,
     Section,
     SectionMetrics,
+    StreetRecord,
     haversine_m,
     safe_div,
 )
@@ -435,6 +439,138 @@ def load_cameras(cfg: Settings) -> dict[str, Any]:
 def nearest_camera_m(camera: dict[str, Any], section: Section) -> float:
     """Distancia en metros entre una cámara y el centroide de una sección."""
     return haversine_m(tuple(camera["centroid"]), section.centroid)
+
+
+def normalize_name(name: str | None) -> str:
+    """Normaliza un nombre de calle para poder compararlo con otro.
+
+    Quita acentos y signos de puntuación, y pasa a mayúsculas: el registro
+    municipal usa `LOPEZ DE HARO D. DIEGO GV` mientras que OSM da
+    `On Diego Lopez Haroko kale nagisia`, y solo se quiere comparar palabras.
+    """
+    if not name:
+        return ""
+    txt = unicodedata.normalize("NFKD", name)
+    txt = "".join(c for c in txt if not unicodedata.combining(c))
+    txt = re.sub(r"[^A-Z0-9 ]", " ", txt.upper())
+    return re.sub(r"\s+", " ", txt).strip()
+
+
+def name_tokens(name: str | None) -> set[str]:
+    """Palabras significativas de un nombre, sin palabras vacías."""
+    return {t for t in normalize_name(name).split() if len(t) >= 4}
+
+
+def name_overlap_score(a: str | None, b: str | None) -> int:
+    """Palabras compartidas entre dos nombres de calle.
+
+    El registro municipal y OSM nombran las mismas calles de forma distinta
+    (`HEROS` frente a `Heros kalea`, `LOPEZ DE HARO D. DIEGO GV` frente a
+    `On Diego Lopez Haroko kale nagisia`), así que no sirve la igualdad:
+    se cuenta el solape de palabras. Es una heurística y se reporta como tal.
+    """
+    return len(name_tokens(a) & name_tokens(b))
+
+
+def load_street_registry(cfg: Settings) -> list[StreetRecord]:
+    """Registro oficial de calles de Bilbao, desde el CSV local.
+
+    Son 923 calles de toda la ciudad, no solo la zona de estudio. Aporta el
+    nombre administrativo y el tipo de vía, que ni el feed de tráfico ni OSM
+    dan de forma fiable.
+
+    El CSV viene suelto en `data/calles.csv`: si no está, el MVP sigue
+    funcionando sin esta capa.
+    """
+    path = Path(cfg.street_registry_path)
+    if not path.exists():
+        logger.warning("No se encuentra el registro de calles: %s", path)
+        return []
+
+    records: list[StreetRecord] = []
+    with path.open(encoding="utf-8-sig", newline="") as fh:
+        reader = csv.DictReader(fh, delimiter=";")
+        for row in reader:
+            name = (row.get("nombre_calle") or "").strip()
+            code = (row.get("cod_calle") or "").strip()
+            if not name or not code:
+                continue
+            records.append(
+                StreetRecord(
+                    code=code,
+                    name=name,
+                    street_type=(row.get("nombre_tipo_via") or "").strip() or None,
+                    type_code=(row.get("cod_tipovia") or "").strip() or None,
+                )
+            )
+
+    logger.info("Registro de calles: %d calles de Bilbao", len(records))
+    return records
+
+
+def build_street_index(
+    registry: list[StreetRecord], sections: list[Section], cfg: Settings
+) -> dict[str, Any]:
+    """Cruza el registro municipal con las secciones que tienen tráfico.
+
+    Une cada sección de tráfico con la calle oficial que mejor encaja por
+    palabras compartidas. El enlace es `DERIVADO` y su fuerza se reporta:
+    `exact` cuando los nombres coinciden tras normalizar, `probable` cuando
+    solo comparten palabras, y `none` para las calles sin medición.
+
+    Sin este cruce, el selector de calles ofrecería 923 nombres de las que
+    solo 26 tienen tráfico medido, sin poder distinguirlo.
+    """
+    scored: dict[str, list[tuple[int, StreetRecord]]] = {}
+    for rec in registry:
+        scored[rec.code] = []
+
+    for sec in sections:
+        best: tuple[int, StreetRecord] | None = None
+        for rec in registry:
+            # Se puntúa la unión de palabras de `name` y `display_name`, no la
+            # suma: `display_name` cae a `name` cuando no hay alias, y sumar
+            # contaría dos veces la misma palabra e inflaría el enlace.
+            shared = (name_tokens(sec.name) & name_tokens(rec.name)) | (
+                name_tokens(sec.display_name) & name_tokens(rec.name)
+            )
+            score = len(shared)
+            if score > 0 and (best is None or score > best[0]):
+                best = (score, rec)
+        if best is not None:
+            scored[best[1].code].append((best[0], sec))
+
+    simulable = 0
+    for code, hits in scored.items():
+        rec = next(r for r in registry if r.code == code)
+        if not hits:
+            rec.match = "none"
+            rec.section_id = None
+            rec.match_score = 0
+            continue
+        simulable += 1
+        hits.sort(key=lambda h: -h[0])
+        rec.match_score, sec = hits[0]
+        rec.section_id = sec.id
+        # Un solape de una sola palabra corta admite más de un candidato, así
+        # que no se considera exacto.
+        rec.match = "exact" if rec.match_score >= 2 else "probable"
+
+    logger.info(
+        "Calles con tráfico medido: %d de %d (unión por palabras)",
+        simulable,
+        len(registry),
+    )
+    return {
+        "streets": sorted(registry, key=lambda r: r.name),
+        "total": len(registry),
+        "with_traffic_data": simulable,
+        "method": (
+            "Cruce por palabras compartidas entre el nombre administrativo y el "
+            "nombre de OSM. No es exacto: se reporta la fuerza de cada enlace."
+        ),
+        "source": str(cfg.street_registry_path),
+    }
 
 
 def load_city_state(cfg: Settings) -> CityState:

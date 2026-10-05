@@ -1,4 +1,4 @@
-﻿"""Pruebas de la API con datos sintéticos en memoria (sin red)."""
+"""Pruebas de la API con datos sintéticos en memoria (sin red)."""
 
 from __future__ import annotations
 
@@ -59,10 +59,10 @@ def test_every_flow_screen_is_served(client) -> None:
     """Cada etapa del flujo debe devolver su HTML, no un 404."""
     for path, marker in (
         ("/", "Peatonalizar"),
-        ("/datos", "Cobertura"),
-        ("/escenario", "Definir intervención"),
+        ("/datos", "Cobertura del feed"),
+        ("/escenario", "Definir la intervención"),
         ("/simulacion", "Secciones afectadas"),
-        ("/jev", "veredicto"),
+        ("/jev", "Veredicto global"),
     ):
         resp = client.get(path)
         assert resp.status_code == 200, path
@@ -71,8 +71,12 @@ def test_every_flow_screen_is_served(client) -> None:
 
 
 def test_static_assets_are_served(client) -> None:
-    """El CSS y el módulo JS compartidos deben servirse sin build."""
-    for path, fragment in (("/static/base.css", "--accent"), ("/static/ui.js", "renderNav")):
+    """Los módulos compartidos y el CSS deben servirse sin paso de compilación."""
+    for path, fragment in (
+        ("/static/base.css", "--rojo"),
+        ("/static/ui.js", "renderChrome"),
+        ("/static/map.js", "renderMap"),
+    ):
         resp = client.get(path)
         assert resp.status_code == 200, path
         assert fragment in resp.text, path
@@ -84,6 +88,60 @@ def test_favicon_is_served(client) -> None:
         resp = client.get(path)
         assert resp.status_code == 200, path
         assert "image/svg+xml" in resp.headers["content-type"]
+
+
+def test_streets_exposes_full_registry_marking_what_is_simulable(client) -> None:
+    """El registro trae todas las calles, marcando las que no se pueden simular."""
+    body = client.get("/streets?limit=1000").json()
+
+    assert body["total"] > 500, "debería traer el registro completo de Bilbao"
+    assert body["with_traffic_data"] < body["total"], "no todas tienen tráfico medido"
+    assert any(not s["simulable"] for s in body["streets"])
+    assert body["method"], "debe declarar cómo se cruzaron los nombres"
+
+
+def test_streets_filter_puts_traffic_data_first(client) -> None:
+    """Al buscar, lo simulable va primero."""
+    body = client.get("/streets?q=heros").json()
+
+    assert body["returned"] >= 1
+    assert body["streets"][0]["simulable"] is True
+
+
+def test_streets_endpoint_is_absent_without_registry(client, synthetic_city, monkeypatch) -> None:
+    """Sin el CSV, /streets responde vacío en vez de romperse."""
+    monkeypatch.setattr("app.main.load_street_registry", lambda cfg: [])
+    monkeypatch.setattr("app.main._street_cache", None)
+
+    body = client.get("/streets").json()
+
+    assert body["total"] == 0
+    assert body["streets"] == []
+
+
+def test_cameras_expose_the_live_reading_of_their_section(
+    client, synthetic_city, monkeypatch
+) -> None:
+    """Sin instantáneas, la cámara se sustituye por la lectura real medida."""
+    monkeypatch.setattr(
+        "app.main.load_cameras",
+        lambda cfg: {
+            "source": "x",
+            "total_in_city": 119,
+            "in_zone": 1,
+            "usable_for_simulation": False,
+            "limitation": "sin cifras",
+            "cameras": [{"id": "1", "name": "Plaza", "centroid": [-2.9400, 43.268]}],
+        },
+    )
+
+    body = client.get("/cameras").json()
+
+    assert body["snapshots_available"] is False
+    assert "404" in body["snapshot_note"]
+    live = body["cameras"][0]["live"]
+    assert live["vehicles_per_hour"] == 1500.0
+    assert live["provenance"] == "REAL"
 
 
 def test_cameras_are_context_only_and_flag_their_limit(client, synthetic_city, monkeypatch) -> None:

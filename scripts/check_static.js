@@ -17,6 +17,10 @@ for (const f of files) {
 
   const usados = new Set([...js.matchAll(/\$\("([^"]+)"\)/g)].map((m) => m[1]));
 
+  /* `#principal` no lo toca el JS de la pantalla: lo busca `renderChrome` en
+     ui.js para insertar las migas de pan. */
+  if (ids.has("principal")) usados.add("principal");
+
   const faltan = [...usados].filter((id) => !ids.has(id));
   // Los ids sin usar son solo informativos: pueden estar para el CSS o para
   // una siguiente iteración. Lo que rompe la pantalla es que falte uno.

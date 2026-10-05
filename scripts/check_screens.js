@@ -28,8 +28,16 @@ function makeEl(id) {
     addEventListener: () => {},
     querySelector: () => null,
     after: () => {},
-    appendChild: () => {},
+    /* El plano se pinta como nodo hijo, no como innerHTML: se anotan los hijos
+     * para que `report` lo cuente como contenedor pintado. */
+    appendChild: (c) => { el.children.push(c); return c; },
+    children: [],
     dataset: {},
+    /* `renderChrome` inserta cabecera y pie en el body, y las migas en el
+       contenedor principal. Que no sea un throw es lo que importa aquí. */
+    insertAdjacentHTML: (pos, html) => {
+      el[`html_${pos}`] = html;
+    },
   };
   return el;
 }
@@ -41,13 +49,29 @@ globalThis.localStorage = {
   removeItem(k) { delete this._d[k]; },
 };
 globalThis.location = { href: "", search: "", replace: () => {} };
+
+/* createElementNS + appendChild hacen falta para el SVG del mapa. */
+const NS = "http://www.w3.org/2000/svg";
+function appendTo(parent, child) {
+  (parent.children || (parent.children = [])).push(child);
+  return child;
+}
 globalThis.document = {
+  body: makeEl("body"),
   _el: (id) => {
     if (!registry.has(id)) registry.set(id, makeEl(id));
     return registry.get(id);
   },
   getElementById: (id) => globalThis.document._el(id),
   createElement: (t) => makeEl(`<${t}>`),
+  createElementNS: (ns, t) => {
+    const el = makeEl(`<${t}>`);
+    el.ns = ns;
+    el.setAttribute = (k, v) => { el.attrs = { ...(el.attrs || {}), [k]: v }; };
+    el.appendChild = (c) => appendTo(el, c);
+    el.lastChild = null;
+    return el;
+  },
   querySelector: () => null,
 };
 /* `Connection: close` evita que el pool keep-alive de undici deje sockets a
@@ -65,18 +89,24 @@ const uiSrc = fs
   .readFileSync(path.join(dir, "ui.js"), "utf8")
   .replace(/^export /gm, "")
   .replace(/^import .*$/gm, "");
+const mapSrc = fs
+  .readFileSync(path.join(dir, "map.js"), "utf8")
+  .replace(/^export /gm, "")
+  .replace(/^import .*$/gm, "");
 
 async function runScreen(file, seed) {
   const html = fs.readFileSync(path.join(dir, file), "utf8");
   const own = [...html.matchAll(/<script type="module">([\s\S]*?)<\/script>/g)]
     .map((m) => m[1]).join("\n");
-  const js = uiSrc + "\n" + own.replace(/import \{[^}]+\} from "\/static\/ui\.js";?/g, "");
+  const js = uiSrc + "\n" + mapSrc + "\n" +
+    own.replace(/import \{[^}]+\} from "\/static\/ui\.js";?/g, "")
+       .replace(/import \{[^}]+\} from "\/static\/map\.js";?/g, "");
 
   if (seed) localStorage.setItem("mvp.scenario", JSON.stringify(seed));
 
   /* Se evalúa con `new Function` en vez de con `import()` de un temporal: cargar
-   módulos dinámicos deja handles de libuv a medio cerrar y Node aborta con un
-   assertion en Windows al salir del proceso. */
+     módulos dinámicos deja handles de libuv a medio cerrar y Node aborta con un
+     assertion en Windows al salir del proceso. */
   try {
     const fn = new Function(`return (async () => {\n${js}\n})();`);
     await fn();
@@ -90,7 +120,10 @@ async function runScreen(file, seed) {
 function report(file, ok, ids) {
   const vacios = ids.filter((id) => {
     const el = registry.get(id);
-    return el && !el.innerHTML.trim() && !el.textContent.trim();
+    if (!el) return true;
+    // `textContent` puede haber recibido un número, no una cadena.
+    return !String(el.innerHTML || "").trim() && !String(el.textContent || "").trim()
+      && !el.children.length;
   });
   if (!ok) return;
   if (vacios.length) {
@@ -101,17 +134,21 @@ function report(file, ok, ids) {
 }
 
 const escenario = { street_id: "Gran Vía", action: "close", params: {} };
+/* Se pasa escenario a las pantallas que arrancan desde uno guardado:
+   escenario (para consultar la ficha) y las dos de resultado. */
+const CON_ESCENARIO = new Set(["escenario.html", "simulacion.html", "jev.html"]);
 
 console.log(`pantallas contra ${BASE}\n`);
 let fallos = 0;
 
 for (const [file, ids] of [
-  ["datos.html", ["coverage", "rows", "cameras", "provenance", "traps", "rows-note"]],
-  ["escenario.html", ["target", "effects", "neighbours", "chips"]],
+  ["index.html", ["flow", "quick"]],
+  ["datos.html", ["mapa", "leyenda", "coverage", "rows", "cameras", "provenance", "traps", "rows-note"]],
+  ["escenario.html", ["target", "effects", "neighbours", "resultados", "buscar-info", "total-calles", "con-datos"]],
   ["simulacion.html", ["kpis", "concentration", "impacts", "notes", "demo", "scenario", "kpi-note"]],
   ["jev.html", ["overall", "dimensions", "thresholds", "confidence", "alerts", "why", "scenario"]],
 ]) {
-  const ok = await runScreen(file, file === "simulacion.html" || file === "jev.html" ? escenario : null);
+  const ok = await runScreen(file, CON_ESCENARIO.has(file) ? escenario : null);
   if (!ok) fallos++;
   report(file, ok, ids);
 }

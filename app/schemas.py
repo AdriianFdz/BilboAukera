@@ -96,6 +96,24 @@ class CityState(BaseModel):
     provenance: Provenance = Provenance.REAL
 
 
+class StreetRecord(BaseModel):
+    """Calle del registro administrativo de Bilbao.
+
+    Son las 923 calles de la ciudad, no solo las de la zona de estudio. Casi
+    todas **no tienen tráfico medido**: `section_id` queda a `None` y no son
+    simulables. El campo `match` dice con qué fuerza se cruzó con una sección
+    de tráfico, porque la unión es por palabras y no es exacta.
+    """
+
+    code: str
+    name: str
+    street_type: str | None = None
+    type_code: str | None = None
+    section_id: str | None = None
+    match: str = "none"
+    match_score: int = 0
+
+
 class Scenario(BaseModel):
     """Intervención define por el usuario."""
 

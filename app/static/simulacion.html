@@ -3,78 +3,85 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Simulación · Peatonalizar calles (Bilbao)</title>
+<title>Simulación · Peatonalizar calles · Bilbao</title>
+<meta name="description" content="Resultado del motor de reglas para el escenario de pedestrianización elegido, con sus seis indicadores y dónde se concentra el impacto.">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/base.css">
 </head>
 <body>
-<div class="wrap">
-  <header class="top">
-    <h1>Simulación</h1>
-    <div class="sub">
-      Resultado del motor de reglas sobre el escenario elegido.
-      Todo lo que hay aquí es <span class="mono">SIMULADO</span> salvo el tráfico de partida.
-    </div>
-  </header>
+<main id="principal" class="contenido">
+  <h1>Qué cambia con este escenario</h1>
+  <p class="entrada">
+    Salida del motor de reglas para la calle y la acción que has elegido. El
+    tráfico de partida está medido; todo lo demás es cálculo, y así se etiqueta.
+  </p>
 
-  <div class="card">
+  <section class="bloque">
     <h2>Escenario en curso</h2>
-    <div id="scenario" class="loading">Cargando…</div>
+    <div id="scenario" class="cargando">Cargando…</div>
+  </section>
+
+  <section class="bloque">
+    <h2>Los seis indicadores</h2>
+    <div id="kpis" class="cargando">Simulando…</div>
+    <p class="tenue" id="kpi-note"></p>
+  </section>
+
+  <div class="columnas">
+    <section class="bloque">
+      <h2>Dónde se concentra el impacto</h2>
+      <div id="concentration" class="cargando">Simulando…</div>
+    </section>
+    <aside>
+      <section class="bloque">
+        <h2>Comparar con los ejemplos</h2>
+        <div id="demo" class="cargando">Cargando…</div>
+      </section>
+    </aside>
   </div>
 
-  <div class="card">
-    <h2>KPIs</h2>
-    <div class="kpis" id="kpis"><span class="loading">Simulando…</span></div>
-    <div class="note mt" id="kpi-note"></div>
-  </div>
-
-  <div class="split">
-    <div class="card">
-      <h2>Concentración del impacto</h2>
-      <div id="concentration"></div>
-      <div class="note mt">
-        El riesgo de una peatonalización es <b>local</b>. El agregado de zona
-        puede no moverse mientras una calle vecina se satura.
-      </div>
-    </div>
-    <div class="card">
-      <h2>Escenarios de demostración</h2>
-      <div id="demo" class="loading">Cargando…</div>
-    </div>
-  </div>
-
-  <div class="card">
+  <section class="bloque">
     <h2>Secciones afectadas</h2>
-    <div class="scroll" id="impacts"><span class="loading">Simulando…</span></div>
-  </div>
+    <div id="impacts" class="scroll tabla-contenedor cargando">Simulando…</div>
+  </section>
 
-  <div class="card">
+  <section class="bloque">
     <h2>Notas del modelo</h2>
-    <ul class="plain" id="notes"></ul>
-    <div class="row" style="margin-top:16px">
-      <a href="/jev"><button>Ver veredicto de Jev →</button></a>
-      <a href="/escenario"><button class="ghost">Cambiar escenario</button></a>
+    <ul class="lista" id="notes"></ul>
+    <div class="acciones">
+      <a class="boton boton-primario" href="/jev">Ver el veredicto de Jev</a>
+      <a class="boton boton-secundario" href="/escenario">Cambiar el escenario</a>
     </div>
-  </div>
-
-  <footer class="bot"><a href="/">← Datos</a> · <a href="/docs">/docs</a></footer>
-</div>
+  </section>
+</main>
 
 <script type="module">
-import { $, pct, dirClass, esc, renderNav, evaluate, requireScenario, showError, tag } from "/static/ui.js";
+import {
+  $, pct, dirClass, esc, renderChrome, evaluate, requireScenario, showError, tag,
+  getScenario,
+} from "/static/ui.js";
 
-renderNav("/simulacion");
+renderChrome("/simulacion", [["Escenario", "/escenario"], ["Simulación"]]);
+
+const ACCION_LABEL = {
+  close: "Peatonalizar, cierre total",
+  traffic_restriction: "Restricción parcial de tráfico",
+};
 
 const body = requireScenario();
 if (body) {
-  $("scenario").innerHTML =
-    `<span class="mono">${esc(body.street_id)}</span> · ${esc(body.action)}` +
-    (Object.keys(body.params || {}).length ? ` · ${esc(JSON.stringify(body.params))}` : "") +
-    ` <a href="/escenario" style="font-size:13px">cambiar</a>`;
+  $("scenario").innerHTML = `
+    <dl class="ficha">
+      <dt>Sección</dt><dd><span class="mono">${esc(body.street_id)}</span></dd>
+      <dt>Acción</dt><dd>${ACCION_LABEL[body.action] || esc(body.action)}</dd>
+      <dt>Parámetros</dt><dd>${Object.keys(body.params || {}).length
+        ? `<span class="mono">${esc(JSON.stringify(body.params))}</span>`
+        : "Ninguno"}</dd>
+    </dl>
+    <div class="acciones"><a href="/escenario">Cambiar el escenario</a></div>`;
 
   try {
-    const d = await evaluate(body);
-    render(d);
+    await render(await evaluate(body));
   } catch (e) {
     ["kpis", "impacts", "concentration"].forEach((id) => showError($(id), e));
     $("kpi-note").textContent = "";
@@ -82,69 +89,83 @@ if (body) {
   }
 }
 
-function render(d) {
+/* Es async para que la comparación con los ejemplos quede pintada junto al
+   resto de la pantalla, y no un instante después. */
+async function render(d) {
   const sim = d.simulation;
-
-  /* --- KPIs --- */
   const k = sim.kpis;
+
+  /* --- los seis indicadores --- */
   const rows = [
-    ["tráfico", k.traffic_change, false],
-    ["emisiones", k.emissions_change, false],
-    ["t. desplazamiento", k.travel_time_change, false],
-    ["peatones", k.pedestrian_change, true],
-    ["comercio (potencial)", k.commercial_activity_change, true],
-    ["accesibilidad", k.accessibility_change, true],
+    ["Tráfico de la zona", k.traffic_change, false],
+    ["Emisiones", k.emissions_change, false],
+    ["Tiempo de desplazamiento", k.travel_time_change, false],
+    ["Peatones", k.pedestrian_change, true],
+    ["Actividad comercial (potencial)", k.commercial_activity_change, true],
+    ["Accesibilidad", k.accessibility_change, true],
   ];
-  $("kpis").innerHTML = rows.map(([label, v, goodUp]) => `
-    <div class="kpi"><div class="k">${label}</div>
-      <div class="v ${dirClass(v, goodUp)}">${pct(v)}</div></div>`).join("") +
-    `<div class="kpi"><div class="k">fuera de la zona</div>
-       <div class="v">${Math.round(sim.displaced_outside_zone)}</div>
-       <div class="u">veh/h sin destino en la zona</div></div>
-     <div class="kpi"><div class="k">sección más afectada</div>
-       <div class="v ${sim.max_section_increase_pct > 25 ? "neg" : "zero"}">
-       ${pct(sim.max_section_increase_pct)}</div></div>`;
+  $("kpis").innerHTML = `<table>
+      <caption>Variación respecto al estado actual. En rojo cuando empeora la magnitud, en verde cuando la mejora.</caption>
+      <thead><tr><th scope="col">Indicador</th><th scope="col" class="num">Variación</th></tr></thead>
+      <tbody>` + rows.map(([label, v, goodUp]) => `
+        <tr><td>${label}</td>
+          <td class="num"><span class="valor ${dirClass(v, goodUp)}">${pct(v)}</span></td></tr>`).join("") + `
+        <tr><td>Tráfico que sale de la zona</td>
+          <td class="num">${Math.round(sim.displaced_outside_zone)} veh/h</td></tr>
+        <tr><td>Peor sección afectada</td>
+          <td class="num"><span class="valor ${sim.max_section_increase_pct > 25 ? "sube" : "igual"}">${pct(sim.max_section_increase_pct)}</span></td></tr>
+      </tbody></table>`;
 
   $("kpi-note").innerHTML =
-    `Tráfico de partida: <b>${Math.round(k.baseline?.vehicles_per_hour ?? 0)} veh/h</b> en la zona. ` +
-    `Las variaciones de peatones, comercio y accesibilidad vienen de pesos ` +
-    `configurados en <span class="mono">config.py</span>, no del feed de tráfico.`;
+    `Tráfico de partida: <b>${Math.round(k.baseline?.vehicles_per_hour ?? 0)} veh/h</b> medidos ` +
+    `en la zona. Las variaciones de peatones, comercio y accesibilidad salen de ` +
+    `pesos configurados en <span class="mono">config.py</span>, no del feed de tráfico.`;
 
-  /* --- concentración del impacto --- */
+  /* --- concentración --- */
   const changed = sim.impacts.filter((i) => Math.abs(i.change_pct) > 0.05);
   const maxUp = Math.max(0, ...sim.impacts.map((i) => i.change_pct));
   const zone = k.traffic_change;
   $("concentration").innerHTML = `
-    <div class="kpis">
-      <div class="kpi"><div class="k">agregado de zona</div>
-        <div class="v ${dirClass(zone, false)}" style="font-size:17px">${pct(zone)}</div></div>
-      <div class="kpi"><div class="k">peor sección</div>
-        <div class="v ${maxUp > 25 ? "neg" : ""}" style="font-size:17px">${pct(maxUp)}</div></div>
-      <div class="kpi"><div class="k">secciones con cambio</div>
-        <div class="v" style="font-size:17px">${changed.length}</div></div>
-    </div>
+    <dl class="ficha">
+      <dt>Agregado de la zona</dt>
+      <dd><span class="valor ${dirClass(zone, false)}">${pct(zone)}</span></dd>
+      <dt>Peor sección</dt>
+      <dd><span class="valor ${maxUp > 25 ? "sube" : "igual"}">${pct(maxUp)}</span></dd>
+      <dt>Secciones con cambio</dt><dd>${changed.length}</dd>
+    </dl>
     ${zone > -1 && maxUp > 10
-      ? `<div class="warnbar mt">El agregado apenas se mueve (${pct(zone)}) pero hay una
-           sección que sube ${pct(maxUp)}. Juzgar por la media de la zona
-           escondería el riesgo real.</div>`
-      : '<div class="note mt">Agregado y peor sección se mueven en la misma proporción.</div>'}`;
+      ? `<div class="aviso aviso-atencion">
+           <h3>El riesgo es local, no agregado</h3>
+           <p>La media de la zona apenas se mueve (${pct(zone)}), pero hay una
+           sección que sube ${pct(maxUp)}. Juzgar por el agregado escondería
+           justo lo que hay que mirar.</p>
+         </div>`
+      : `<p class="tenue">El agregado y la peor sección se mueven en la misma
+         proporción, así que la media de la zona no engaña en este caso.</p>`}`;
 
   /* --- tabla de impactos --- */
   const sorted = [...changed].sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct));
+  $("impacts").className = "scroll tabla-contenedor";
   $("impacts").innerHTML = sorted.length ? `
-    <table><thead><tr>
-      <th>Sección</th><th>Calle</th>
-      <th class="num">Antes</th><th class="num">Después</th><th class="num">Δ</th><th>Origen</th>
-    </tr></thead><tbody>` +
+    <table>
+      <caption>Secciones cuyo tráfico cambia, ordenadas por magnitud del cambio.</caption>
+      <thead><tr>
+        <th scope="col">Sección</th>
+        <th scope="col">Calle</th>
+        <th scope="col" class="num">Antes</th>
+        <th scope="col" class="num">Después</th>
+        <th scope="col" class="num">Variación</th>
+        <th scope="col">Origen</th>
+      </tr></thead><tbody>` +
     sorted.map((i) => `<tr>
       <td class="mono">${esc(i.section_id)}</td>
-      <td>${esc(i.name || "—")}</td>
+      <td>${esc(i.name || "Sin nombre")}</td>
       <td class="num">${Math.round(i.baseline_vehicles_per_hour)}</td>
       <td class="num">${Math.round(i.simulated_vehicles_per_hour)}</td>
-      <td class="num ${i.change_pct > 0 ? "neg" : "pos"}">${pct(i.change_pct)}</td>
-      <td><span class="tag plain">${esc(i.provenance)}</span></td>
+      <td class="num"><span class="valor ${i.change_pct > 0 ? "sube" : "baja"}">${pct(i.change_pct)}</span></td>
+      <td>${esc(i.provenance)}</td>
     </tr>`).join("") + `</tbody></table>`
-    : '<span class="note">Ninguna sección cambia: comprueba que la acción tenga efecto.</span>';
+    : '<p class="tenue">Ninguna sección cambia. Comprueba que la acción tenga efecto.</p>';
 
   /* --- notas --- */
   const notes = sim.notes || [];
@@ -152,46 +173,44 @@ function render(d) {
     ? notes.map((n) => `<li>${esc(n)}</li>`).join("")
     : "<li>Sin notas: el motor no ha detectado nada destacable.</li>";
 
-  loadDemo();
+  await loadDemo();
 }
 
 /* --- comparación con los escenarios de demostración --- */
 async function loadDemo() {
   try {
     const d = await (await fetch("/demo")).json();
-    const cur = getCurBody();
+    const cur = getScenario();
     $("demo").innerHTML = `
-      <div class="note" style="margin-bottom:10px">
-        ${esc(d.street.display_name || d.street.name)}
-        (sección <span class="mono">${esc(d.street.id)}</span>)
-      </div>
-      <table><thead><tr>
-        <th>Acción</th><th class="num">Tráfico</th><th class="num">Emisiones</th>
-        <th class="num">Peatones</th><th>Jev</th>
-      </tr></thead><tbody>` +
+      <p class="tenue">Sobre <b>${esc(d.street.display_name || d.street.name)}</b>,
+        sección <span class="mono">${esc(d.street.id)}</span>.</p>
+      <table>
+        <thead><tr>
+          <th scope="col">Acción</th>
+          <th scope="col" class="num">Tráfico</th>
+          <th scope="col" class="num">Emisiones</th>
+          <th scope="col" class="num">Peatones</th>
+          <th scope="col">Jev</th>
+        </tr></thead><tbody>` +
       d.scenarios.map((s) => {
         const isCur = cur && s.scenario.street_id === cur.street_id &&
           s.scenario.action === cur.action &&
           JSON.stringify(s.scenario.params || {}) === JSON.stringify(cur.params || {});
-        return `<tr${isCur ? ' style="background:#141922"' : ""}>
-          <td>${esc(s.scenario.action)}${isCur ? " ◂" : ""}</td>
+        return `<tr${isCur ? ' style="background:var(--azul-tenue)"' : ""}>
+          <td>${esc(ACCION_LABEL[s.scenario.action] || s.scenario.action)}${isCur ? " (este)" : ""}</td>
           <td class="num">${pct(s.kpis.traffic_change)}</td>
           <td class="num">${pct(s.kpis.emissions_change)}</td>
           <td class="num">${pct(s.kpis.pedestrian_change)}</td>
           <td>${tag(s.jev.overall_status)}</td></tr>`;
       }).join("") + `</tbody></table>
-      <div class="note mt">
-        Cobertura: ${d.coverage.sections_in_zone} secciones,
-        ${d.coverage.freshness_pct}% con lectura de hoy,
+      <p class="tenue">
+        Cobertura de los ejemplos: ${d.coverage.sections_in_zone} secciones,
+        ${d.coverage.freshness_pct}% con lectura de hoy y
         ${d.coverage.zero_intensity_sections} con intensidad 0.
-      </div>`;
+      </p>`;
   } catch (e) {
-    $("demo").innerHTML = `<span class="err">${esc(e.message)}</span>`;
+    $("demo").innerHTML = `<p class="error-msg">${esc(e.message)}</p>`;
   }
-}
-
-function getCurBody() {
-  try { return JSON.parse(localStorage.getItem("mvp.scenario")); } catch { return null; }
 }
 </script>
 </body>

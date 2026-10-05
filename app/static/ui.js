@@ -11,16 +11,22 @@ export const $ = (id) => document.getElementById(id);
 export const pct = (v) => (v > 0 ? "+" : "") + Number(v).toFixed(1) + "%";
 
 /* Color según si la variación es buena o mala para esa magnitud. */
+/** Clase de color: `sube`/`baja` es bueno para esa magnitud según `goodUp`. */
 export const dirClass = (v, goodUp) =>
-  Math.abs(v) < 0.05 ? "zero" : (v > 0) === goodUp ? "pos" : "neg";
+  Math.abs(v) < 0.05 ? "igual" : (v > 0) === goodUp ? "baja" : "sube";
 
 /* Los enums se emiten en castellano y algunos llevan espacios y acentos
    ("REQUIERE REVISIÓN"), así que no sirven como clase CSS: se mapea el tono. */
-const GOOD = new Set(["BAJO", "POSITIVO", "FAVORABLE"]);
-const BAD = new Set(["ALTO", "NEGATIVO", "REQUIERE REVISIÓN"]);
+const TONO = {
+  BAJO: "ok", POSITIVO: "ok", FAVORABLE: "ok",
+  ALTO: "error", NEGATIVO: "error", "REQUIERE REVISIÓN": "aviso",
+  ACEPTABLE: "neutro", SIMULADO: "neutro", DERIVADO: "neutro", REAL: "ok",
+};
 
-export const tone = (v) => (GOOD.has(v) ? "pos" : BAD.has(v) ? "neg" : "warn");
-export const tag = (v) => `<span class="tag ${tone(v)}">${v}</span>`;
+const tone = (v) => TONO[v] || "neutro";
+
+/** Estado como texto con color. Sin fondo ni píldora: se lee como frase. */
+export const tag = (v) => `<span class="estado ${tone(v)}">${esc(v)}</span>`;
 
 /** Escapa texto antes de insertarlo con innerHTML. */
 export const esc = (s) =>
@@ -39,8 +45,6 @@ export const getScenario = () => {
 };
 
 export const setScenario = (s) => localStorage.setItem(SCENARIO_KEY, JSON.stringify(s));
-
-export const clearScenario = () => localStorage.removeItem(SCENARIO_KEY);
 
 /** Cuerpo del POST a /evaluate a partir del formulario de escenario. */
 export function scenarioFromForm(streetEl, actionEl, ratioEl) {
@@ -74,24 +78,95 @@ export function requireScenario() {
 
 /** Muestra el error de una petición en un contenedor. */
 export function showError(el, e) {
-  el.innerHTML = `<span class="err">${esc(e.message || e)}</span>`;
+  el.innerHTML = `<span class="error-msg">${esc(e.message || e)}</span>`;
 }
 
-/** Barra de navegación, con la pantalla actual marcada. */
-export function renderNav(active) {
-  const screens = [
-    ["/", "Datos"],
-    ["/escenario", "Escenario"],
-    ["/simulacion", "Simulación"],
-    ["/jev", "Jev"],
-  ];
-  const nav = document.createElement("nav");
-  nav.className = "screens";
-  nav.innerHTML = screens
-    .map(([href, label], i) => {
-      const cur = href === active ? ' aria-current="page"' : "";
-      return `<a href="${href}"${cur}><span class="step">${i + 1}</span>${esc(label)}</a>`;
-    })
-    .join("");
-  document.querySelector("header.top")?.after(nav);
+/* --- chrome institucional -------------------------------------------------
+ * Cabecera, barra de navegación y pie se montan por JS para que las cinco
+ * pantallas no repitan la misma marca. El escudo es un placeholder declarado:
+ * no se puede dibujar el oficial sin su fichero.
+ */
+
+const PANTALLAS = [
+  ["/", "Datos", "Cobertura, tráfico medido y procedencia"],
+  ["/escenario", "Escenario", "Qué calle se interviene y con qué acción"],
+  ["/simulacion", "Simulación", "Cifras del impacto y dónde se concentra"],
+  ["/jev", "Jev", "Veredicto por dimensión con umbrales"],
+];
+
+export function renderChrome(active, migas = []) {
+  const nav = PANTALLAS.map(([href, label]) => {
+    const cur = href === active ? ' aria-current="page"' : "";
+    return `<a href="${href}"${cur}>${esc(label)}</a>`;
+  }).join("");
+
+  document.body.insertAdjacentHTML(
+    "afterbegin",
+    `<a class="saltar" href="#principal">Saltar al contenido</a>
+     <div class="franja"></div>
+     <header class="cabecera">
+       <div class="contenido">
+         <div class="marca">
+           <span class="escudo" role="img" aria-label="Escudo de Bilbao, pendiente">EB</span>
+           <span>
+             <span class="nombre">Bilbao</span><br>
+             <span class="servicio">Laboratorio urbano digital</span>
+           </span>
+         </div>
+         <div class="idiomas">
+           <span aria-current="true" lang="es">ES</span>
+           <span aria-disabled="true" lang="eu"
+                 title="La versión en euskera está pendiente">EU</span>
+         </div>
+       </div>
+     </header>
+     <div class="barra"><nav aria-label="Pasos del flujo">${nav}</nav></div>`,
+  );
+
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<footer class="pie">
+       <div class="contenido">
+         <div>
+           <h3>El caso de uso</h3>
+           <p class="legal" style="margin:0;font-size:15px">
+             Qué ocurre al pedestrianizar una calle de Bilbao. MVP acotado: una
+             acción, una sección de tráfico medida, un veredicto.
+           </p>
+         </div>
+         <div>
+           <h3>Pantallas</h3>
+           <ul>${PANTALLAS.map(
+             ([href, label]) => `<li><a href="${href}">${esc(label)}</a></li>`,
+           ).join("")}</ul>
+         </div>
+         <div>
+           <h3>Servicios técnicos</h3>
+           <ul>
+             <li><a href="/docs">Documentación de la API</a></li>
+             <li><a href="/health">Estado de las fuentes</a></li>
+             <li><a href="/streets">Calles de Bilbao</a></li>
+           </ul>
+         </div>
+         <p class="legal">
+           Estimaciones de un modelo de reglas sobre datos reales parciales.
+           No son predicciones ni recomendaciones de política urbana.
+           Procedencia de cada magnitud: real, derivado o simulado.
+         </p>
+       </div>
+     </footer>`,
+  );
+
+  if (migas.length) {
+    const trail = migas
+      .map(([href, label]) =>
+        href ? `<a href="${href}">${esc(label)}</a>` : `<span>${esc(label)}</span>`,
+      )
+      .join(" &rsaquo; ");
+    document.querySelector("#principal")?.insertAdjacentHTML(
+      "afterbegin",
+      `<nav class="migas" aria-label="Migas de pan">${trail}</nav>`,
+    );
+  }
 }
+

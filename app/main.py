@@ -15,7 +15,15 @@ from fastapi.staticfiles import StaticFiles
 
 from app import engine
 from app.config import Settings, settings
-from app.data import cache_status, load_cameras, load_city_state, nearest_camera_m
+from app.data import (
+    build_street_index,
+    cache_status,
+    load_cameras,
+    load_city_state,
+    load_street_registry,
+    nearest_camera_m,
+    normalize_name,
+)
 from app.jev import Thresholds, evaluate
 from app.schemas import (
     CityState,
@@ -53,6 +61,7 @@ app = FastAPI(
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 _city_cache: CityState | None = None
+_street_cache: dict[str, Any] | None = None
 
 
 def get_city(cfg: Settings) -> CityState:
@@ -64,6 +73,16 @@ def get_city(cfg: Settings) -> CityState:
     if _city_cache is None:
         _city_cache = load_city_state(cfg)
     return _city_cache
+
+
+def get_street_index(cfg: Settings) -> dict[str, Any]:
+    """Calles de Bilbao cruzadas con las secciones de tráfico, cacheado."""
+    global _street_cache
+    if _street_cache is None:
+        _street_cache = build_street_index(
+            load_street_registry(cfg), get_city(cfg).sections, cfg
+        )
+    return _street_cache
 
 
 def _metrics_by_id(state: CityState, cfg: Settings) -> dict[str, Any]:
@@ -127,7 +146,7 @@ def screen(request: Request) -> FileResponse:
     Una sola función para todas: el contenido vive en `app/static/*.html` y
     no necesita lógica en el servidor.
     """
-    page = SCREENS.get(request.url.path, "datos.html")
+    page = SCREENS.get(request.url.path, "index.html")
     return FileResponse(STATIC_DIR / page)
 
 
@@ -202,19 +221,35 @@ def cameras() -> dict[str, Any]:
     cams = payload["cameras"]
 
     # Distancia de cada cámara a la sección más cercana: responde "¿esta calle
-    # está observada por alguien?".
+    # está observada por alguien?" y, con ella, cuál es su lectura actual.
     for cam in cams:
-        best: tuple[float, str | None] | None = None
+        best_sec: tuple[float, Any] | None = None
         for sec in state.sections:
             d = nearest_camera_m(cam, sec)
-            if best is None or d < best[0]:
-                best = (d, sec.display_name or sec.name or sec.id)
-        cam["nearest_section"] = best[1] if best else None
-        cam["distance_to_section_m"] = round(best[0], 1) if best else None
+            if best_sec is None or d < best_sec[0]:
+                best_sec = (d, sec)
+        if best_sec is None:
+            cam["nearest_section"] = None
+            cam["nearest_section_id"] = None
+            cam["distance_to_section_m"] = None
+            cam["live"] = None
+            continue
+        sec = best_sec[1]
+        cam["nearest_section"] = sec.display_name or sec.name or sec.id
+        cam["nearest_section_id"] = sec.id
+        cam["distance_to_section_m"] = round(best_sec[0], 1)
+        cam["live"] = {
+            "vehicles_per_hour": sec.intensity,
+            "velocity_kmh": sec.velocity_kmh,
+            "occupancy": sec.occupancy,
+            "observed_at": sec.observed_at,
+            "is_fresh": sec.is_fresh,
+            "provenance": sec.provenance.value,
+        }
 
     observed = sorted(
         {
-            cam["nearest_section"]
+            cam["nearest_section_id"]
             for cam in cams
             if cam.get("distance_to_section_m") is not None
             and cam["distance_to_section_m"] <= settings.camera_audit_radius_m
@@ -223,7 +258,67 @@ def cameras() -> dict[str, Any]:
     payload["sections_observed"] = observed
     payload["sections_observed_count"] = len(observed)
     payload["audit_radius_m"] = settings.camera_audit_radius_m
+    # El feed promete instantáneas en `URL`, pero el servicio `camarastrafico`
+    # devuelve 404 para todo, incluida la raíz del directorio (verificado).
+    # Se declara aquí para que el frontend no tenga que intentarlo y enseñar
+    # imágenes rotas.
+    payload["snapshots_available"] = False
+    payload["snapshot_note"] = (
+        "El feed publica una URL de instantánea por cámara, pero el servicio "
+        "camarastrafico de bilbao.eus devuelve 404: el servicio está retirado. "
+        "Por eso no hay foto que mostrar y la vista de cada punto se sustituye "
+        "por la lectura medida de su sección más próxima."
+    )
     return payload
+
+
+@app.get("/streets", tags=["datos"])
+def streets(q: str = "", limit: int = 300) -> dict[str, Any]:
+    """Registro de calles de Bilbao, con las que tienen tráfico medido.
+
+    Sin argumentos devuelve las 923 calles del registro administrativo.
+    Con `?q=` filtra por nombre. `limit` acota el tamaño de la respuesta:
+    el selector de la interfaz lo consume, no un humano.
+
+    Solo las calles con `section_id` son simulables. El resto se devuelve con
+    `match: "none"` para que la interfaz no ofrezca simular lo que no se
+    puede medir.
+    """
+    index = get_street_index(settings)
+    items = index["streets"]
+
+    if q.strip():
+        needle = normalize_name(q)
+        terms = [t for t in needle.split() if len(t) >= 3]
+        scored = []
+        for rec in items:
+            hay = normalize_name(rec.name)
+            if all(t in hay for t in terms):
+                scored.append((0 if rec.section_id else 1, rec))
+        # Con tráfico medido primero: es lo que el usuario puede simular.
+        scored.sort(key=lambda s: (s[0], s[1].name))
+        items = [r for _, r in scored]
+    else:
+        items = sorted(items, key=lambda r: (r.section_id is None, r.name))
+
+    return {
+        "total": index["total"],
+        "with_traffic_data": index["with_traffic_data"],
+        "method": index["method"],
+        "source": index["source"],
+        "returned": len(items[:limit]),
+        "streets": [
+            {
+                "code": r.code,
+                "name": r.name,
+                "street_type": r.street_type,
+                "section_id": r.section_id,
+                "match": r.match,
+                "simulable": r.section_id is not None,
+            }
+            for r in items[:limit]
+        ],
+    }
 
 
 @app.post("/scenario", tags=["escenario"])

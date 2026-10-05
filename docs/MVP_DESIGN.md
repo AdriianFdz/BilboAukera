@@ -28,9 +28,11 @@ USUARIO → FRONTEND (mapa) → API FastAPI
                               └─ jev.py     : evaluación estructurada
 ```
 
-Sin frontend en este repo: la API expone `/docs` y sirve un mapa mínimo
-HTML. El React/MapLibre del documento es la capa siguiente, no un requisito
-para validar la hipótesis.
+El frontend son cinco pantallas HTML en `app/static`, servidas por FastAPI, con
+módulos ES nativos y sin paso de compilación. El plano es un SVG dibujado en el
+navegador con la geometría real de las secciones (`map.js`), a propósito, para no
+depender de un CDN al verlo. El React/MapLibre del documento sigue siendo la
+capa siguiente, no un requisito para validar la hipótesis.
 
 ## 3. Datos reales y sus trampas
 
@@ -39,8 +41,9 @@ Verificado contra las fuentes el 2026-10-05:
 | Fuente | URL | Estado |
 |---|---|---|
 | Tráfico | `bilbao.eus/aytoonline/srvDatasetTrafico?formato=geojson` | 81 secciones, `CodigoSeccion`/`Ocupacion`/`Intensidad`/`Velocidad`/`FechaHora` |
-| Cámaras | `bilbao.eus/aytoonline/srvDatasetCamaras?formato=geojson` | 200 OK |
+| Cámaras | `bilbao.eus/aytoonline/srvDatasetCamaras?formato=geojson` | 200 OK, pero el servicio de instantáneas `camarastrafico` devuelve 404 |
 | Red viaria | Overpass API (`overpass-api.de/api/interpreter`) | nombres, `lanes`, `oneway`, `maxspeed` |
+| Calles | `data/calles.csv` (registro municipal, local) | 923 calles de Bilbao: código, nombre y tipo de vía |
 
 **Trampas que el diseño tiene que absorber:**
 
@@ -52,19 +55,32 @@ Verificado contra las fuentes el 2026-10-05:
    Se usa como *severidad de congestión* relativa, no como velocidad real.
 4. `Ocupacion` va de 0 a 51 sin unidad documentada. Se usa solo como ordinal.
 5. El 25 % de las secciones tiene `Intensidad = 0` (sensores apagados).
-6. Los nombres de OSM están en **euskera** ("kalea" = calle).
+6. Los nombres de OSM están en **euskera** ("kalea" = calle), y el registro
+   municipal los da en castellano y en orden invertido
+   (`LOPEZ DE HARO D. DIEGO` frente a `On Diego Lopez Haroko kale nagisia`).
+   La unión con el registro municipal es por palabras compartidas, y cada calle
+   declara si el enlace es `exact`, `probable` o `none`.
+7. El campo `URL` de las cámaras promete instantáneas, pero el servicio
+   `camarastrafico` está retirado: 404 para todas las cámaras, para todas las
+   variantes de nombre de fichero y para la raíz del directorio. No hay foto que
+   enseñar. En su lugar se muestra la lectura medida de la sección que la cámara
+   vigila, que sí responde a cómo está la calle ahora mismo.
 
 **Unidad de simulación = la sección de tráfico**, no la calle. Es la única que
-tiene dato real medido, y sin dato real no hay con qué simular.
+tiene dato real medido, y sin dato real no hay con qué simular. Por eso el
+selector ofrece las 923 calles del registro pero solo marca como simulables las
+15 que enlazan con una sección medida.
 
-Toda respuesta lleva `provenance`: `real` | `derived` | `simulated`.
+Toda respuesta lleva `provenance`: `REAL` | `DERIVADO` | `SIMULADO`.
 Ningún valor estimado se etiqueta como medición.
 
 ## 4. Endpoints
 
 ```
-GET  /city              estado actual de la zona (real + derivado)
+GET  /city              estado actual de la zona (real + derivado), con geometría
 GET  /traffic           tráfico por sección, con frescura y cobertura
+GET  /streets           923 calles de Bilbao, marcando las simulables
+GET  /cameras           puntos de observación y lectura real de su sección
 POST /scenario          valida y normaliza un escenario
 POST /simulate          ejecuta reglas → KPIs
 POST /evaluate          KPIs → veredicto estructurado de Jev
