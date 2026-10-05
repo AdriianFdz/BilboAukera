@@ -42,8 +42,7 @@ y Jev clasifica el resultado con umbrales, confianza y alertas.
 - **Backend:** Python y FastAPI.
 - **Modelo:** representación acotada de secciones de una zona de Bilbao, no un
   gemelo digital completo.
-- **Datos:** Bilbao Open Data, Open Data Euskadi cuando proceda, OpenStreetMap
-  y el registro municipal de calles.
+- **Datos:** Bilbao Open Data, OpenStreetMap y el registro municipal de calles.
 - **Persistencia:** JSON y CSV locales para caché y funcionamiento reproducible.
 - **Decisión:** Jev como capa estructurada de evaluación y clasificación.
 - **IA generativa:** prevista como capa opcional para interpretar peticiones y
@@ -63,8 +62,8 @@ El usuario puede:
    las alertas.
 
 Las acciones previstas para una evolución posterior son `bike_lane`,
-`remove_parking` y `speed_change`. El MVP implementa las acciones necesarias
-para demostrar el flujo principal.
+`remove_parking` y `speed_change`. No son valores aceptados actualmente por la
+API: el MVP solo implementa `close` y `traffic_restriction`.
 
 ### Modelo urbano y simulación
 
@@ -99,11 +98,11 @@ La primera petición descarga los datos de Bilbao Open Data y OpenStreetMap
 ## Pantallas
 
 Una por etapa del flujo. HTML plano y módulos ES nativos: **sin build, sin bundler,
-sin `npm install`**.
+sin `npm install`**. En total hay cinco pantallas.
 
 | Ruta | Pantalla | Qué muestra |
 |---|---|---|
-| `/` | Inicio | Índice de las cuatro pantallas, estado de los datos y ejemplos ya evaluados |
+| `/` | Inicio | Índice de las cinco pantallas, estado de los datos y ejemplos ya evaluados |
 | `/datos` | Datos | Plano de la zona, cobertura del feed, tráfico sección a sección, procedencia, puntos de observación y trampas de los datos |
 | `/escenario` | Escenario | Buscador sobre las 923 calles de Bilbao, qué calle se interviene y con qué acción, ficha de la sección, efectos y vecinas candidatas |
 | `/simulacion` | Simulación | Los 6 KPIs, concentración del impacto, tabla de secciones afectadas, notas del modelo |
@@ -140,7 +139,8 @@ curl "localhost:8000/streets?q=lopez"
 ```
 
 `street_id` admite el `CodigoSeccion` del feed, el alias en castellano o el
-nombre de OSM en euskera.
+nombre de OSM en euskera. La restricción parcial recibe
+`params.allowed_ratio` entre `0` y `1`; si no se indica, conserva el 60 %.
 
 ## Qué devuelve
 
@@ -183,7 +183,8 @@ nagisia`.
 `GET /streets` devuelve las 923 y cruza cada una con las secciones que tienen
 tráfico medido. El cruce es **por palabras compartidas**, no por igualdad, y no
 es exacto: cada calle declara `match` = `exact`, `probable` o `none`. Con los
-datos de hoy, 15 de 923 calles quedan enlazadas a una sección de tráfico.
+datos actuales, 15 de 923 calles quedan enlazadas a una sección de tráfico;
+esta cifra puede cambiar si cambia el feed o la caché.
 
 Las calles sin enlace se pueden buscar y se muestran, pero **no son simulables**:
 sin intensidad medida no hay nada que repartir ni que contrastar. La pantalla de
@@ -198,7 +199,7 @@ El feed `srvDatasetCamaras` se verificó en vivo y **no sirve para medir tráfic
   intensidad, ni conteo, ni velocidad.
 
 Las instantáneas que promete el campo `URL` **no existen**. No es un problema de
-URLs antigüidas: el servicio `camarastrafico` de bilbao.eus devuelve 404 para
+URLs antiguas: el servicio `camarastrafico` de bilbao.eus devuelve 404 para
 todo, incluida la raíz del directorio, para todas las cámaras y todas las
 variantes de nombre de fichero. El servicio está retirado.
 
@@ -221,7 +222,7 @@ app/
   jev.py      clasificación estructurada
   schemas.py  esquemas y contratos
   static/     las 5 pantallas + base.css + ui.js + map.js
-tests/        49 pruebas, sin red
+tests/        49 pruebas, con datos sintéticos y sin depender de red
 scripts/      comprobaciones de las pantallas (requiere Node)
 docs/         entregable, arquitectura, definición del reto e imágenes
 ```
@@ -275,8 +276,10 @@ taskkill /PID <pid> /T /F
 - Las emisiones se recalculan con el tráfico simulado y la longitud de cada sección. Es una estimación de tramos, no una ruta completa ni una medición ambiental.
 - Como la zona de estudio es una muestra acotada, el 20 % configurable del
   tráfico desplazado se contabiliza como salida de la zona; el resto se
-  redistribuye entre las vecinas disponibles.
-- Si el tráfico desplazado no cabe en la zona, se declara como `displaced_outside_zone` y se pierde de vista: el impacto sobre el resto de Bilbao queda fuera del alcance.
+  redistribuye entre las vecinas disponibles. Si además se agota su capacidad,
+  el sobrante se añade a `displaced_outside_zone`.
+- El tráfico declarado como `displaced_outside_zone` queda fuera de los KPIs de
+  la zona; su impacto sobre el resto de Bilbao queda fuera del alcance.
 - El mapa muestra geometrías de secciones y capas base OSM/satélite; no sustituye a
   un sistema profesional de asignación de viajes ni a un callejero municipal.
 - El feed de cámaras se usa como contexto y no como fuente de intensidad: sus
