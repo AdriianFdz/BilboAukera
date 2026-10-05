@@ -6,6 +6,9 @@
 <title>Escenario · Peatonalizar calles · Bilbao</title>
 <meta name="description" content="Qué calle de Bilbao se interviene y con qué acción, sobre las secciones que tienen tráfico medido.">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:wght@600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/base.css">
 </head>
 <body>
@@ -114,7 +117,7 @@ import {
   $, esc, renderChrome, scenarioFromForm, setScenario, getScenario,
 } from "/static/ui.js";
 
-renderChrome("/escenario", [["Datos", "/datos"], ["Escenario"]]);
+renderChrome("/escenario", [["Inicio", "/"], ["Datos", "/datos"], ["Escenario"]]);
 
 if (new URLSearchParams(location.search).get("hint")) $("hint").hidden = false;
 
@@ -191,6 +194,8 @@ function renderTarget(d) {
 
   const fx = d.configured_effects || {};
   const claves = Object.keys(fx);
+  /* Sin color por signo: cada clave mejora o empeora según su magnitud, y eso
+     solo lo sabe el motor al simular. Aquí solo se declara el efecto. */
   $("effects").innerHTML = claves.length
     ? `<table>
         <caption>Efectos declarados para esta acción, en porcentaje sobre el tráfico.</caption>
@@ -198,7 +203,7 @@ function renderTarget(d) {
         <tbody>` + claves.map((k) => {
           const v = Number(fx[k]);
           return `<tr><td class="mono">${esc(k)}</td>
-            <td class="num ${dirOf(v)}">${v > 0 ? "+" : ""}${Math.round(v * 100)}%</td></tr>`;
+            <td class="num">${v > 0 ? "+" : ""}${Math.round(v * 100)}%</td></tr>`;
         }).join("") + `</tbody></table>
       <p class="tenue">Pesos del modelo, no mediciones. Configurables por entorno.</p>`
     : '<p class="tenue">Esta acción no declara efectos.</p>';
@@ -213,9 +218,6 @@ function renderTarget(d) {
          tráfico desplazado no podría repartirse. Escoge otra calle.</p>
        </div>`;
 }
-
-/* Rojo si la variación empeora la magnitud, verde si la mejora. */
-const dirOf = (v) => (Math.abs(v) < 0.005 ? "igual" : v > 0 ? "sube" : "baja");
 
 let debounce;
 $("street").addEventListener("input", () => {

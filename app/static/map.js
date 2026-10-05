@@ -81,9 +81,9 @@ export function renderMap({ sections, cameras = [], bbox, targetId = null, onSel
   const maxInt = Math.max(1, ...sections.map((s) => s.intensity || 0));
   const target = sections.find((s) => s.id === targetId);
 
-  // Polígonos de las secciones, coloreados por intensidad: azul Bilbao poco
-  // saturado cuando hay poco tráfico, rojo Bilbao en el extremo alto. La
-  // sección objetivo se distingue por el borde, no por el relleno.
+  // Polígonos de las secciones, coloreados por intensidad en escala roja:
+  // cuanto más tráfico, más oscuro. La sección objetivo se distingue por el
+  // borde de tinta, no por el relleno, para no confundirse con la intensidad.
   for (const sec of sections) {
     const pts = (sec.geometry || []).map(project);
     if (pts.length < 3) continue;
@@ -92,9 +92,9 @@ export function renderMap({ sections, cameras = [], bbox, targetId = null, onSel
 
     const poly = svgEl("polygon", {
       points: pts.map((p) => p.join(",")).join(" "),
-      fill: t > 0.66 ? "var(--rojo)" : t > 0.33 ? "var(--azul)" : "var(--azul-tenue)",
+      fill: t > 0.66 ? "var(--rojo-oscuro)" : t > 0.33 ? "var(--rojo)" : "var(--rojo-tenue)",
       "fill-opacity": isTarget ? "0.55" : "0.75",
-      stroke: isTarget ? "var(--rojo-oscuro)" : "var(--blanco)",
+      stroke: isTarget ? "var(--tinta)" : "var(--blanco)",
       "stroke-width": isTarget ? 3 : 1,
     });
     const title = svgEl("title");
@@ -111,7 +111,7 @@ export function renderMap({ sections, cameras = [], bbox, targetId = null, onSel
     const g = svgEl("g", { transform: `translate(${x} ${y}) rotate(${cam.rotation_deg ?? 0})` });
     g.appendChild(svgEl("path", {
       d: "M0 -6 L4.5 5 L0 2.5 L-4.5 5 Z",
-      fill: "var(--azul-oscuro)",
+      fill: "var(--tinta)",
       stroke: "var(--blanco)",
       "stroke-width": 1.5,
     }));
@@ -140,13 +140,13 @@ export function renderMap({ sections, cameras = [], bbox, targetId = null, onSel
 export function mapLegend(sections, cameras) {
   const maxInt = Math.max(1, ...sections.map((s) => s.intensity || 0));
   return `<ul class="leyenda-mapa">
-    <li><span class="muestra" style="background:var(--azul-tenue);border-color:var(--linea)"></span>
+    <li><span class="muestra" style="background:var(--rojo-tenue);border-color:var(--linea)"></span>
       Hasta ${Math.round(maxInt / 3)} veh/h</li>
-    <li><span class="muestra" style="background:var(--azul);border-color:var(--azul)"></span>
-      Entre ${Math.round(maxInt / 3)} y ${Math.round((maxInt * 2) / 3)} veh/h</li>
     <li><span class="muestra" style="background:var(--rojo);border-color:var(--rojo)"></span>
+      Entre ${Math.round(maxInt / 3)} y ${Math.round((maxInt * 2) / 3)} veh/h</li>
+    <li><span class="muestra" style="background:var(--rojo-oscuro);border-color:var(--rojo-oscuro)"></span>
       Más de ${Math.round((maxInt * 2) / 3)} veh/h</li>
-    <li><span class="muestra" style="border-radius:50%;background:var(--azul-oscuro)"></span>
+    <li><span class="muestra" style="border-radius:50%;background:var(--tinta)"></span>
       ${cameras.length} puntos de observación, con su dirección de giro</li>
   </ul>`;
 }

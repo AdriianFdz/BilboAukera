@@ -10,23 +10,32 @@ export const $ = (id) => document.getElementById(id);
 
 export const pct = (v) => (v > 0 ? "+" : "") + Number(v).toFixed(1) + "%";
 
-/* Color según si la variación es buena o mala para esa magnitud. */
-/** Clase de color: `sube`/`baja` es bueno para esa magnitud según `goodUp`. */
+/** Clase de color: `baja` cuando mejora la magnitud, `sube` cuando la empeora. */
 export const dirClass = (v, goodUp) =>
   Math.abs(v) < 0.05 ? "igual" : (v > 0) === goodUp ? "baja" : "sube";
 
-/* Los enums se emiten en castellano y algunos llevan espacios y acentos
-   ("REQUIERE REVISIÓN"), así que no sirven como clase CSS: se mapea el tono. */
+/* Los enums se emiten en mayúsculas, así que no sirven como clase CSS ni como
+   texto de interfaz: se mapea el tono y la presentación (sentence case). */
 const TONO = {
   BAJO: "ok", POSITIVO: "ok", FAVORABLE: "ok",
   ALTO: "error", NEGATIVO: "error", "REQUIERE REVISIÓN": "aviso",
-  ACEPTABLE: "neutro", SIMULADO: "neutro", DERIVADO: "neutro", REAL: "ok",
+  ACEPTABLE: "neutro", SIMULADO: "error", DERIVADO: "neutro", REAL: "ok",
+};
+const TEXTO = {
+  BAJO: "Bajo", ALTO: "Alto", ACEPTABLE: "Aceptable",
+  POSITIVO: "Positivo", NEGATIVO: "Negativo", FAVORABLE: "Favorable",
+  "REQUIERE REVISIÓN": "Requiere revisión",
+  REAL: "Real", DERIVADO: "Derivado", SIMULADO: "Simulado",
 };
 
 const tone = (v) => TONO[v] || "neutro";
 
 /** Estado como texto con color. Sin fondo ni píldora: se lee como frase. */
-export const tag = (v) => `<span class="estado ${tone(v)}">${esc(v)}</span>`;
+export const tag = (v) =>
+  `<span class="estado ${tone(v)}">${esc(TEXTO[v] || v)}</span>`;
+
+/** Procedencia de una magnitud, con el mismo tratamiento que los estados. */
+export const provenance = (v) => tag(v);
 
 /** Escapa texto antes de insertarlo con innerHTML. */
 export const esc = (s) =>
@@ -88,10 +97,11 @@ export function showError(el, e) {
  */
 
 const PANTALLAS = [
-  ["/", "Datos", "Cobertura, tráfico medido y procedencia"],
-  ["/escenario", "Escenario", "Qué calle se interviene y con qué acción"],
-  ["/simulacion", "Simulación", "Cifras del impacto y dónde se concentra"],
-  ["/jev", "Jev", "Veredicto por dimensión con umbrales"],
+  ["/", "Inicio"],
+  ["/datos", "Datos"],
+  ["/escenario", "Escenario"],
+  ["/simulacion", "Simulación"],
+  ["/jev", "Jev"],
 ];
 
 export function renderChrome(active, migas = []) {

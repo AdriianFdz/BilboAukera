@@ -6,6 +6,9 @@
 <title>Simulación · Peatonalizar calles · Bilbao</title>
 <meta name="description" content="Resultado del motor de reglas para el escenario de pedestrianización elegido, con sus seis indicadores y dónde se concentra el impacto.">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:wght@600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/base.css">
 </head>
 <body>
@@ -61,7 +64,7 @@ import {
   getScenario,
 } from "/static/ui.js";
 
-renderChrome("/simulacion", [["Escenario", "/escenario"], ["Simulación"]]);
+renderChrome("/simulacion", [["Inicio", "/"], ["Escenario", "/escenario"], ["Simulación"]]);
 
 const ACCION_LABEL = {
   close: "Peatonalizar, cierre total",
@@ -196,7 +199,7 @@ async function loadDemo() {
         const isCur = cur && s.scenario.street_id === cur.street_id &&
           s.scenario.action === cur.action &&
           JSON.stringify(s.scenario.params || {}) === JSON.stringify(cur.params || {});
-        return `<tr${isCur ? ' style="background:var(--azul-tenue)"' : ""}>
+        return `<tr${isCur ? ' style="background:var(--fondo)"' : ""}>
           <td>${esc(ACCION_LABEL[s.scenario.action] || s.scenario.action)}${isCur ? " (este)" : ""}</td>
           <td class="num">${pct(s.kpis.traffic_change)}</td>
           <td class="num">${pct(s.kpis.emissions_change)}</td>

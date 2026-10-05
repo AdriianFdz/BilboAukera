@@ -6,6 +6,9 @@
 <title>Datos · Peatonalizar calles · Bilbao</title>
 <meta name="description" content="Cobertura, tráfico medido y procedencia de los datos reales de tráfico de Bilbao para el caso de uso de pedestrianizar una calle.">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:wght@600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/base.css">
 </head>
 <body>
@@ -86,10 +89,10 @@
 </main>
 
 <script type="module">
-import { $, esc, renderChrome } from "/static/ui.js";
+import { $, esc, provenance, renderChrome } from "/static/ui.js";
 import { renderMap, mapLegend } from "/static/map.js";
 
-renderChrome("/", [["Servicios técnicos", "/#datos"], ["Datos"]]);
+renderChrome("/datos", [["Inicio", "/"], ["Datos"]]);
 
 const ciudad = await (await fetch("/city")).json();
 const camResp = await (await fetch("/cameras")).json();
@@ -147,7 +150,7 @@ $("rows").innerHTML = secs.map((s) => `
     <td class="num">${Math.round(s.vehicles_per_hour || 0)}</td>
     <td class="num">${s.velocity_kmh ?? "Sin dato"}</td>
     <td>${s.is_fresh ? "Hoy" : "Antigua"}</td>
-    <td>${esc(s.provenance)}</td>
+    <td>${provenance(s.provenance)}</td>
   </tr>`).join("");
 $("rows-note").textContent =
   `${secs.length} secciones. Solo la intensidad es medida; velocidad y ocupación ` +
