@@ -1,0 +1,37 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.venv/
+venv/
+env/
+
+# --- Tests y herramientas ---
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# --- Entorno ---
+.env
+.env.*
+!.env.example
+
+# --- Datos y artefactos ---
+data/
+*.db
+*.sqlite3
+storage/
+
+# --- Editores y SO ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

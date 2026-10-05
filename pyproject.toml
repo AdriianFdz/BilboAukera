@@ -1,0 +1,54 @@
+[project]
+name = "simulador-urbano-bilbao"
+version = "0.1.0"
+description = "Simulador urbano inteligente: laboratorio de escenarios urbanos para Bilbao"
+readme = "README.md"
+requires-python = ">=3.13"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",    # pycodestyle
+    "F",         # pyflakes
+    "I",         # isort
+    "N",         # pep8-naming
+    "UP",        # pyupgrade
+    "B",         # bugbear
+    "C4",        # comprehensions
+    "SIM",       # simplify
+    "ANN",       # anotaciones
+    "D",         # pydocstyle
+    "RUF",
+]
+ignore = [
+    "D203",  # incompatible con D211
+    "D213",  # incompatible con D212
+    "B008",  # Depends() en defaults es el patrón idiomático de FastAPI
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D100", "D103", "ANN"]
+"alembic/*" = ["ANN", "D103"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q --strict-markers"
+filterwarnings = ["error::DeprecationWarning:app.*"]
+
+[tool.mypy]
+python_version = "3.13"
+ignore_missing_imports = true
+warn_unused_ignores = false
+exclude = ["alembic/versions"]
+
+[[tool.mypy.overrides]]
+module = ["geoalchemy2.*", "alembic.*"]
+ignore_missing_imports = true

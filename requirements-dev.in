@@ -1,0 +1,9 @@
+# Dependencias de desarrollo.
+#   pip install -r requirements-dev.in && pip freeze > requirements-dev.txt
+
+-r requirements.in
+
+pytest>=8.3
+pytest-cov>=6.0
+ruff>=0.8
+mypy>=1.13
