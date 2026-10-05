@@ -255,24 +255,6 @@ dirección de `BASE`, por defecto `http://127.0.0.1:8079`:
 $env:BASE = "http://127.0.0.1:8079"; node scripts\check_screens.js
 ```
 
-### Si una pantalla no carga
-
-Síntoma: `/` se ve bien pero `/datos`, `/escenario`, `/simulacion` o `/jev`
-devuelven 404, y `/static/base.css` también.
-
-Causa casi siempre: un worker de uvicorn de una sesión anterior sigue
-ocupando el puerto con el código viejo en memoria. El detalle que lo delata es
-que su proceso padre, el que recarga, ya no existe, así que **no puede volver a
-recargar nunca**. Como `/` es un `FileResponse`, lee el HTML nuevo del disco en
-cada petición, y por eso la raíz sí parece actualizada mientras todo lo demás
-falla.
-
-```powershell
-Get-NetTCPConnection -LocalPort 8000 -State Listen |
-  Select-Object OwningProcess
-taskkill /PID <pid> /T /F
-.venv\Scripts\uvicorn app.main:app --reload
-```
 
 ## Límites conocidos
 
