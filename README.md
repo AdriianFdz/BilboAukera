@@ -1,4 +1,15 @@
-# MVP — Laboratorio Urbano Digital: peatonalizar calles
+<p align="center">
+  <img src="app/static/logo.png" alt="BilboAukera" width="520">
+</p>
+
+<h1 align="center">BilboAukera</h1>
+
+<p align="center">
+  <strong>Toma de decisiones urbanas para Bilbao</strong><br>
+  MVP de laboratorio urbano digital para analizar la peatonalización de calles.
+</p>
+
+## MVP — Laboratorio Urbano Digital: peatonalizar calles
 
 Caso de uso acotado: **estimar qué pasa al pedestrianizar una calle.**
 Ejemplo de demostración: **Bilbao**, Abando e Indautxu.
