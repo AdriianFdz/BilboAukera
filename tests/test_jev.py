@@ -1,4 +1,4 @@
-"""Pruebas de la clasificación de Jev."""
+﻿"""Pruebas de la clasificación de Jev."""
 
 from __future__ import annotations
 
@@ -46,39 +46,39 @@ def test_clean_scenario_is_favorable() -> None:
     verdict = evaluate(make_result(), sections_count=20, fresh_ratio=1.0)
 
     assert verdict.overall_status.value == "FAVORABLE"
-    assert verdict.environmental_impact.value == "POSITIVE"
+    assert verdict.environmental_impact.value == "POSITIVO"
 
 
 def test_section_overload_triggers_high_traffic_risk() -> None:
     verdict = evaluate(make_result(max_section=51.6), sections_count=20, fresh_ratio=1.0)
 
-    assert verdict.traffic_risk.value == "HIGH"
+    assert verdict.traffic_risk.value == "ALTO"
     assert any("secci" in a for a in verdict.alerts)
 
 
 def test_zone_traffic_increase_triggers_high_risk() -> None:
     verdict = evaluate(make_result(traffic=18.0, max_section=2.0), sections_count=20)
 
-    assert verdict.traffic_risk.value == "HIGH"
+    assert verdict.traffic_risk.value == "ALTO"
 
 
 def test_slow_travel_time_upgrades_traffic_risk() -> None:
     verdict = evaluate(make_result(travel=35.0, max_section=1.0), sections_count=20)
 
-    assert verdict.traffic_risk.value == "HIGH"
+    assert verdict.traffic_risk.value == "ALTO"
     assert any("desplazamiento" in a for a in verdict.alerts)
 
 
 def test_commercial_drop_is_flagged() -> None:
     verdict = evaluate(make_result(commercial=-15.0), sections_count=20)
 
-    assert verdict.commercial_impact.value == "NEGATIVE"
+    assert verdict.commercial_impact.value == "NEGATIVO"
 
 
 def test_accessibility_drop_is_flagged() -> None:
     verdict = evaluate(make_result(accessibility=-12.0), sections_count=20)
 
-    assert verdict.accessibility_impact.value == "NEGATIVE"
+    assert verdict.accessibility_impact.value == "NEGATIVO"
 
 
 def test_two_negatives_require_review() -> None:
@@ -86,7 +86,7 @@ def test_two_negatives_require_review() -> None:
         make_result(max_section=51.6, accessibility=-15.0), sections_count=20
     )
 
-    assert verdict.overall_status.value == "REVIEW_REQUIRED"
+    assert verdict.overall_status.value == "REQUIERE REVISIÓN"
 
 
 def test_confidence_drops_when_traffic_leaves_zone() -> None:
@@ -107,7 +107,7 @@ def test_thresholds_are_configurable() -> None:
     lenient = Thresholds(traffic_high_pct=80.0, section_traffic_high_pct=90.0)
     strict = evaluate(make_result(traffic=20.0, max_section=5.0), thresholds=lenient)
 
-    assert strict.traffic_risk.value != "HIGH"
+    assert strict.traffic_risk.value != "ALTO"
 
 
 def test_verdict_has_no_free_text_field() -> None:

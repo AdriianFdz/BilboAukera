@@ -24,3 +24,4 @@ El proyecto utilizará Bilbao como entorno de referencia y podrá seleccionar po
 - Arquitectura:
 ![Arquitectura de la solución](resources/architecture.jpg)
 
+- Flujo de datos:

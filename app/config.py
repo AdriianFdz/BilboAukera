@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     # --- Frescura de datos ---
     #: Secciones más antiguas que esto se marcan como no frescas.
     freshness_hours: int = 24
+    #: Radio (m) a partir del cual una cámara se considera que observa una
+    #: sección. Solo sirve para auditar la procedencia del dato, no para medir.
+    camera_audit_radius_m: int = 150
     #: Vecinas consideradas para redistribuir tráfico.
     neighbour_count: int = 4
     #: Radio máximo (m) para considerar que dos secciones son vecinas.

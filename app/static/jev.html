@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jev · Peatonalizar calles (Bilbao)</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/base.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Jev · veredicto</h1>
+    <div class="sub">
+      Clasificación estructurada, sin texto libre. Cada etiqueta sale de un
+      umbral de <span class="mono">config.py</span> aplicado a la simulación.
+    </div>
+  </header>
+
+  <div class="card">
+    <h2>Escenario evaluado</h2>
+    <div id="scenario" class="loading">Cargando…</div>
+  </div>
+
+  <div class="card">
+    <h2>Veredicto global</h2>
+    <div id="overall" class="loading">Evaluando…</div>
+  </div>
+
+  <div class="card">
+    <h2>Clasificación por dimensión</h2>
+    <div id="dimensions" class="loading">—</div>
+    <div class="note mt" id="why"></div>
+  </div>
+
+  <div class="split">
+    <div class="card">
+      <h2>Umbrales aplicados</h2>
+      <div id="thresholds" class="loading">—</div>
+    </div>
+    <div class="card">
+      <h2>Confianza y alertas</h2>
+      <div id="confidence" class="loading">—</div>
+      <ul id="alerts"></ul>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Qué significa y qué no significa</h2>
+    <ul class="plain">
+      <li>Es una clasificación por reglas sobre datos reales parciales, no una predicción.</li>
+      <li>El veredicto no tiene en cuenta comercio real, licencias ni opinión vecinal: solo lo que hay en el feed de tráfico.</li>
+      <li>La redistribución del tráfico usa capacidad y proximidad, no la conectividad real de los cruces. Es la mayor debilidad del modelo.</li>
+      <li>Las emisiones solo bajan si el tráfico sale de la zona: sin distancia de desvío no se puede afirmar que se recorra menos.</li>
+      <li>Los índices de comercio y accesibilidad son pesos configurados, no mediciones. Cambian si cambias <span class="mono">MVP_COMMERCIAL_PENALTY_CLOSE</span>.</li>
+      <li>La confianza baja si hay fugas fuera de la zona, pocas secciones o datos antiguos. Es una señal sobre el dato, no sobre la ciudad.</li>
+    </ul>
+    <div class="row" style="margin-top:16px">
+      <a href="/simulacion"><button class="ghost">← Ver simulación</button></a>
+      <a href="/escenario"><button class="ghost">Cambiar escenario</button></a>
+    </div>
+  </div>
+
+  <footer class="bot"><a href="/">← Datos</a> · <a href="/docs">/docs</a></footer>
+</div>
+
+<script type="module">
+import { $, pct, esc, renderNav, evaluate, requireScenario, showError, tag, tone } from "/static/ui.js";
+
+renderNav("/jev");
+
+const body = requireScenario();
+if (body) {
+  $("scenario").innerHTML =
+    `<span class="mono">${esc(body.street_id)}</span> · ${esc(body.action)}` +
+    (Object.keys(body.params || {}).length ? ` · ${esc(JSON.stringify(body.params))}` : "") +
+    ` <a href="/escenario" style="font-size:13px">cambiar</a>`;
+
+  try {
+    const d = await evaluate(body);
+    render(d);
+  } catch (e) {
+    ["overall", "dimensions", "thresholds", "confidence"].forEach((id) => showError($(id), e));
+  }
+}
+
+function render(d) {
+  const j = d.jev;
+  const k = d.simulation.kpis;
+
+  /* --- veredicto global --- */
+  $("overall").innerHTML = `
+    <div class="tags">${tag(j.overall_status)}</div>
+    <div class="kpis" style="margin-top:14px">
+      <div class="kpi"><div class="k">confianza</div>
+        <div class="v ${j.confidence >= 0.7 ? "pos" : j.confidence >= 0.4 ? "" : "neg"}">
+        ${Math.round(j.confidence * 100)}%</div></div>
+      <div class="kpi"><div class="k">peor sección</div>
+        <div class="v ${d.simulation.max_section_increase_pct > 25 ? "neg" : "zero"}">
+        ${pct(d.simulation.max_section_increase_pct)}</div></div>
+      <div class="kpi"><div class="k">fuera de zona</div>
+        <div class="v">${Math.round(d.simulation.displaced_outside_zone)}</div>
+        <div class="u">veh/h</div></div>
+    </div>
+    <div class="note mt">${esc(j.disclaimer)}</div>`;
+
+  /* --- dimensiones, con el valor que_lduce la etiqueta --- */
+  const dims = [
+    ["tráfico", j.traffic_risk, `Agregado ${pct(k.traffic_change)} · peor sección ${pct(d.simulation.max_section_increase_pct)}`],
+    ["ambiental", j.environmental_impact, `Emisiones ${pct(k.emissions_change)}`],
+    ["comercial", j.commercial_impact, `Potencial comercial ${pct(k.commercial_activity_change)}`],
+    ["accesibilidad", j.accessibility_impact, `Accesibilidad ${pct(k.accessibility_change)}`],
+  ];
+  $("dimensions").innerHTML = `
+    <table><thead><tr><th>Dimensión</th><th>Clasificación</th><th>Magnitud que la determina</th></tr></thead><tbody>` +
+    dims.map(([name, level, why]) => `<tr>
+      <td>${esc(name)}</td><td>${tag(level)}</td>
+      <td class="note">${esc(why)}</td></tr>`).join("") + `</tbody></table>
+    <div class="note mt" style="margin-top:12px">
+      Tiempo de desplazamiento: ${pct(k.travel_time_change)} (se informa aparte, no
+      clasifica por separado).
+    </div>`;
+
+  $("why").textContent =
+    "Las etiquetas no dependen solo del agregado: el riesgo de tráfico usa el peor de " +
+    "agregado y sección, porque el daño de una peatonalización aparece en la calle que lo recibe.";
+
+  /* --- umbrales --- */
+  $("thresholds").innerHTML = `
+    <table><tbody>` + Object.entries(j.thresholds_applied || {}).map(([k2, v]) => `
+      <tr><td class="mono">${esc(k2)}</td>
+        <td class="num">${esc(v)}${String(k2).endsWith("_pct") ? "%" : ""}</td></tr>`).join("") +
+    `</tbody></table>
+    <div class="note mt">Configurables por entorno con prefijo <span class="mono">MVP_</span>.</div>`;
+
+  /* --- confianza y alertas --- */
+  const conf = Math.round(j.confidence * 100);
+  $("confidence").innerHTML = `
+    <div class="kpi"><div class="k">confianza en el veredicto</div>
+      <div class="v ${conf >= 70 ? "pos" : conf >= 40 ? "" : "neg"}">${conf}%</div>
+      <div class="u">sobre el dato, no sobre la ciudad</div></div>
+    <div class="note mt">
+      Baja con el tráfico que se escapa de la zona, con pocas secciones y con
+      lecturas antiguas. No compensa sesgos del modelo.
+    </div>`;
+
+  const alerts = j.alerts || [];
+  $("alerts").innerHTML = alerts.length
+    ? alerts.map((a) => `<li>${esc(a)}</li>`).join("")
+    : '<li class="pos" style="color:var(--pos)">Sin alertas.</li>';
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulación · Peatonalizar calles (Bilbao)</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/base.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Simulación</h1>
+    <div class="sub">
+      Resultado del motor de reglas sobre el escenario elegido.
+      Todo lo que hay aquí es <span class="mono">SIMULADO</span> salvo el tráfico de partida.
+    </div>
+  </header>
+
+  <div class="card">
+    <h2>Escenario en curso</h2>
+    <div id="scenario" class="loading">Cargando…</div>
+  </div>
+
+  <div class="card">
+    <h2>KPIs</h2>
+    <div class="kpis" id="kpis"><span class="loading">Simulando…</span></div>
+    <div class="note mt" id="kpi-note"></div>
+  </div>
+
+  <div class="split">
+    <div class="card">
+      <h2>Concentración del impacto</h2>
+      <div id="concentration"></div>
+      <div class="note mt">
+        El riesgo de una peatonalización es <b>local</b>. El agregado de zona
+        puede no moverse mientras una calle vecina se satura.
+      </div>
+    </div>
+    <div class="card">
+      <h2>Escenarios de demostración</h2>
+      <div id="demo" class="loading">Cargando…</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Secciones afectadas</h2>
+    <div class="scroll" id="impacts"><span class="loading">Simulando…</span></div>
+  </div>
+
+  <div class="card">
+    <h2>Notas del modelo</h2>
+    <ul class="plain" id="notes"></ul>
+    <div class="row" style="margin-top:16px">
+      <a href="/jev"><button>Ver veredicto de Jev →</button></a>
+      <a href="/escenario"><button class="ghost">Cambiar escenario</button></a>
+    </div>
+  </div>
+
+  <footer class="bot"><a href="/">← Datos</a> · <a href="/docs">/docs</a></footer>
+</div>
+
+<script type="module">
+import { $, pct, dirClass, esc, renderNav, evaluate, requireScenario, showError, tag } from "/static/ui.js";
+
+renderNav("/simulacion");
+
+const body = requireScenario();
+if (body) {
+  $("scenario").innerHTML =
+    `<span class="mono">${esc(body.street_id)}</span> · ${esc(body.action)}` +
+    (Object.keys(body.params || {}).length ? ` · ${esc(JSON.stringify(body.params))}` : "") +
+    ` <a href="/escenario" style="font-size:13px">cambiar</a>`;
+
+  try {
+    const d = await evaluate(body);
+    render(d);
+  } catch (e) {
+    ["kpis", "impacts", "concentration"].forEach((id) => showError($(id), e));
+    $("kpi-note").textContent = "";
+    $("notes").innerHTML = "";
+  }
+}
+
+function render(d) {
+  const sim = d.simulation;
+
+  /* --- KPIs --- */
+  const k = sim.kpis;
+  const rows = [
+    ["tráfico", k.traffic_change, false],
+    ["emisiones", k.emissions_change, false],
+    ["t. desplazamiento", k.travel_time_change, false],
+    ["peatones", k.pedestrian_change, true],
+    ["comercio (potencial)", k.commercial_activity_change, true],
+    ["accesibilidad", k.accessibility_change, true],
+  ];
+  $("kpis").innerHTML = rows.map(([label, v, goodUp]) => `
+    <div class="kpi"><div class="k">${label}</div>
+      <div class="v ${dirClass(v, goodUp)}">${pct(v)}</div></div>`).join("") +
+    `<div class="kpi"><div class="k">fuera de la zona</div>
+       <div class="v">${Math.round(sim.displaced_outside_zone)}</div>
+       <div class="u">veh/h sin destino en la zona</div></div>
+     <div class="kpi"><div class="k">sección más afectada</div>
+       <div class="v ${sim.max_section_increase_pct > 25 ? "neg" : "zero"}">
+       ${pct(sim.max_section_increase_pct)}</div></div>`;
+
+  $("kpi-note").innerHTML =
+    `Tráfico de partida: <b>${Math.round(k.baseline?.vehicles_per_hour ?? 0)} veh/h</b> en la zona. ` +
+    `Las variaciones de peatones, comercio y accesibilidad vienen de pesos ` +
+    `configurados en <span class="mono">config.py</span>, no del feed de tráfico.`;
+
+  /* --- concentración del impacto --- */
+  const changed = sim.impacts.filter((i) => Math.abs(i.change_pct) > 0.05);
+  const maxUp = Math.max(0, ...sim.impacts.map((i) => i.change_pct));
+  const zone = k.traffic_change;
+  $("concentration").innerHTML = `
+    <div class="kpis">
+      <div class="kpi"><div class="k">agregado de zona</div>
+        <div class="v ${dirClass(zone, false)}" style="font-size:17px">${pct(zone)}</div></div>
+      <div class="kpi"><div class="k">peor sección</div>
+        <div class="v ${maxUp > 25 ? "neg" : ""}" style="font-size:17px">${pct(maxUp)}</div></div>
+      <div class="kpi"><div class="k">secciones con cambio</div>
+        <div class="v" style="font-size:17px">${changed.length}</div></div>
+    </div>
+    ${zone > -1 && maxUp > 10
+      ? `<div class="warnbar mt">El agregado apenas se mueve (${pct(zone)}) pero hay una
+           sección que sube ${pct(maxUp)}. Juzgar por la media de la zona
+           escondería el riesgo real.</div>`
+      : '<div class="note mt">Agregado y peor sección se mueven en la misma proporción.</div>'}`;
+
+  /* --- tabla de impactos --- */
+  const sorted = [...changed].sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct));
+  $("impacts").innerHTML = sorted.length ? `
+    <table><thead><tr>
+      <th>Sección</th><th>Calle</th>
+      <th class="num">Antes</th><th class="num">Después</th><th class="num">Δ</th><th>Origen</th>
+    </tr></thead><tbody>` +
+    sorted.map((i) => `<tr>
+      <td class="mono">${esc(i.section_id)}</td>
+      <td>${esc(i.name || "—")}</td>
+      <td class="num">${Math.round(i.baseline_vehicles_per_hour)}</td>
+      <td class="num">${Math.round(i.simulated_vehicles_per_hour)}</td>
+      <td class="num ${i.change_pct > 0 ? "neg" : "pos"}">${pct(i.change_pct)}</td>
+      <td><span class="tag plain">${esc(i.provenance)}</span></td>
+    </tr>`).join("") + `</tbody></table>`
+    : '<span class="note">Ninguna sección cambia: comprueba que la acción tenga efecto.</span>';
+
+  /* --- notas --- */
+  const notes = sim.notes || [];
+  $("notes").innerHTML = notes.length
+    ? notes.map((n) => `<li>${esc(n)}</li>`).join("")
+    : "<li>Sin notas: el motor no ha detectado nada destacable.</li>";
+
+  loadDemo();
+}
+
+/* --- comparación con los escenarios de demostración --- */
+async function loadDemo() {
+  try {
+    const d = await (await fetch("/demo")).json();
+    const cur = getCurBody();
+    $("demo").innerHTML = `
+      <div class="note" style="margin-bottom:10px">
+        ${esc(d.street.display_name || d.street.name)}
+        (sección <span class="mono">${esc(d.street.id)}</span>)
+      </div>
+      <table><thead><tr>
+        <th>Acción</th><th class="num">Tráfico</th><th class="num">Emisiones</th>
+        <th class="num">Peatones</th><th>Jev</th>
+      </tr></thead><tbody>` +
+      d.scenarios.map((s) => {
+        const isCur = cur && s.scenario.street_id === cur.street_id &&
+          s.scenario.action === cur.action &&
+          JSON.stringify(s.scenario.params || {}) === JSON.stringify(cur.params || {});
+        return `<tr${isCur ? ' style="background:#141922"' : ""}>
+          <td>${esc(s.scenario.action)}${isCur ? " ◂" : ""}</td>
+          <td class="num">${pct(s.kpis.traffic_change)}</td>
+          <td class="num">${pct(s.kpis.emissions_change)}</td>
+          <td class="num">${pct(s.kpis.pedestrian_change)}</td>
+          <td>${tag(s.jev.overall_status)}</td></tr>`;
+      }).join("") + `</tbody></table>
+      <div class="note mt">
+        Cobertura: ${d.coverage.sections_in_zone} secciones,
+        ${d.coverage.freshness_pct}% con lectura de hoy,
+        ${d.coverage.zero_intensity_sections} con intensidad 0.
+      </div>`;
+  } catch (e) {
+    $("demo").innerHTML = `<span class="err">${esc(e.message)}</span>`;
+  }
+}
+
+function getCurBody() {
+  try { return JSON.parse(localStorage.getItem("mvp.scenario")); } catch { return null; }
+}
+</script>
+</body>
+</html>

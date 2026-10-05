@@ -9,12 +9,13 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app import engine
 from app.config import Settings, settings
-from app.data import cache_status, load_city_state
+from app.data import cache_status, load_cameras, load_city_state, nearest_camera_m
 from app.jev import Thresholds, evaluate
 from app.schemas import (
     CityState,
@@ -32,7 +33,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
-STATIC_INDEX = STATIC_DIR / "index.html"
+
+#: Las pantallas son HTML plano + módulos ES nativos: sin build ni bundler.
 
 app = FastAPI(
     title=settings.app_name,
@@ -47,6 +49,8 @@ app = FastAPI(
     ),
 )
 
+
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 _city_cache: CityState | None = None
 
@@ -101,14 +105,30 @@ def _run(scenario: Scenario, cfg: Settings) -> tuple[CityState, SimulationResult
     return state, result
 
 
-@app.get("/", include_in_schema=False)
-def index() -> FileResponse:
-    """Página mínima de demostración.
+#: Una pantalla por etapa del flujo. Son ficheros estáticos: esta función solo
+#: los sirve, sin lógica de negocio detrás.
+SCREENS = {
+    "/": "index.html",
+    "/datos": "datos.html",
+    "/escenario": "escenario.html",
+    "/simulacion": "simulacion.html",
+    "/jev": "jev.html",
+}
 
-    El mapa con Leaflet/MapLibre es la siguiente capa del MVP; esta página
-    muestra el resultado cuantitativo que genera el motor.
+
+@app.get("/", include_in_schema=False)
+@app.get("/datos", include_in_schema=False)
+@app.get("/escenario", include_in_schema=False)
+@app.get("/simulacion", include_in_schema=False)
+@app.get("/jev", include_in_schema=False)
+def screen(request: Request) -> FileResponse:
+    """Sirve la pantalla de la etapa actual del flujo.
+
+    Una sola función para todas: el contenido vive en `app/static/*.html` y
+    no necesita lógica en el servidor.
     """
-    return FileResponse(STATIC_INDEX)
+    page = SCREENS.get(request.url.path, "datos.html")
+    return FileResponse(STATIC_DIR / page)
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -167,6 +187,43 @@ def traffic() -> dict[str, Any]:
             for s in state.sections
         ],
     }
+
+
+@app.get("/cameras", tags=["datos"])
+def cameras() -> dict[str, Any]:
+    """Puntos de observación del Ayuntamiento en la zona.
+
+    Capa de **contexto**, no de medición: el feed no trae cifras de tráfico y
+    sus instantáneas están caídas. Se usa para auditar de dónde procede cada
+    sección y qué secciones tienen un punto de verificación cercano.
+    """
+    state = get_city(settings)
+    payload = load_cameras(settings)
+    cams = payload["cameras"]
+
+    # Distancia de cada cámara a la sección más cercana: responde "¿esta calle
+    # está observada por alguien?".
+    for cam in cams:
+        best: tuple[float, str | None] | None = None
+        for sec in state.sections:
+            d = nearest_camera_m(cam, sec)
+            if best is None or d < best[0]:
+                best = (d, sec.display_name or sec.name or sec.id)
+        cam["nearest_section"] = best[1] if best else None
+        cam["distance_to_section_m"] = round(best[0], 1) if best else None
+
+    observed = sorted(
+        {
+            cam["nearest_section"]
+            for cam in cams
+            if cam.get("distance_to_section_m") is not None
+            and cam["distance_to_section_m"] <= settings.camera_audit_radius_m
+        }
+    )
+    payload["sections_observed"] = observed
+    payload["sections_observed_count"] = len(observed)
+    payload["audit_radius_m"] = settings.camera_audit_radius_m
+    return payload
 
 
 @app.post("/scenario", tags=["escenario"])

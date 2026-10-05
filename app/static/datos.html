@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Datos · Peatonalizar calles (Bilbao)</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/base.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Peatonalizar calles · MVP</h1>
+    <div class="sub">
+      Laboratorio urbano digital. Datos reales de Bilbao (Abando / Indautxu).
+      Estimaciones de un modelo de reglas, no predicciones.
+    </div>
+  </header>
+
+  <div class="card">
+    <h2>Cobertura del feed de tráfico</h2>
+    <div id="coverage" class="loading">Cargando…</div>
+  </div>
+
+  <div class="split">
+    <div class="card">
+      <h2>Tráfico observado por sección</h2>
+      <div class="scroll">
+        <table>
+          <thead><tr>
+            <th>Sección</th><th>Calle</th>
+            <th class="num">Veh/h</th><th class="num">Vel. (km/h)</th>
+            <th>Frescura</th><th>Origen</th>
+          </tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="note mt" id="rows-note"></div>
+    </div>
+
+    <div class="card">
+      <h2>Puntos de observación (cámaras)</h2>
+      <div id="cameras" class="loading">Cargando…</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Origen de cada magnitud</h2>
+    <div id="provenance"></div>
+  </div>
+
+  <div class="card">
+    <h2>Límites conocidos de estos datos</h2>
+    <ul class="plain" id="traps"></ul>
+  </div>
+
+  <footer class="bot">
+    API: <a href="/docs">/docs</a> · <a href="/demo">/demo</a> · <a href="/health">/health</a>
+  </footer>
+</div>
+
+<script type="module">
+import { $, pct, esc, renderNav } from "/static/ui.js";
+
+renderNav("/");
+
+/* --- cobertura --- */
+const t = await (await fetch("/traffic")).json();
+const c = t.coverage || {};
+
+$("coverage").innerHTML = `
+  <div class="kpis">
+    <div class="kpi"><div class="k">secciones en zona</div>
+      <div class="v">${c.sections_in_zone ?? 0}</div>
+      <div class="u">de ${(c.sections_off_zone_skipped ?? 0) + (c.sections_in_zone ?? 0)} en el feed</div></div>
+    <div class="kpi"><div class="k">lectura de hoy</div>
+      <div class="v ${c.freshness_pct >= 80 ? "pos" : c.freshness_pct >= 50 ? "" : "neg"}">
+      ${c.freshness_pct ?? 0}%</div>
+      <div class="u">${c.fresh_sections ?? 0} frescas · ${c.stale_sections ?? 0} antiguas</div></div>
+    <div class="kpi"><div class="k">con nombre OSM</div>
+      <div class="v">${c.named_sections ?? 0}</div>
+      <div class="u">de ${c.sections_in_zone ?? 0}</div></div>
+    <div class="kpi"><div class="k">intensidad 0</div>
+      <div class="v ${(c.zero_intensity_sections ?? 0) > 0 ? "neg" : ""}">
+      ${c.zero_intensity_sections ?? 0}</div>
+      <div class="u">sin tráfico medido</div></div>
+  </div>
+  <div class="note mt">Fuente: ${esc(c.source || t.source || "")}</div>`;
+
+/* --- tabla de secciones --- */
+const secs = [...(t.sections || [])].sort((a, b) => (b.vehicles_per_hour || 0) - (a.vehicles_per_hour || 0));
+$("rows").innerHTML = secs.map((s) => `
+  <tr>
+    <td class="mono">${esc(s.id)}</td>
+    <td>${esc(s.display_name || s.name || "—")}</td>
+    <td class="num">${Math.round(s.vehicles_per_hour || 0)}</td>
+    <td class="num">${s.velocity_kmh ?? "—"}</td>
+    <td>${s.is_fresh ? '<span class="tag pos">hoy</span>' : '<span class="tag warn">antigua</span>'}</td>
+    <td><span class="tag plain">${esc(s.provenance)}</span></td>
+  </tr>`).join("");
+$("rows-note").textContent =
+  `${secs.length} secciones. Solo la intensidad es medida; el resto son magnitudes derivadas.`;
+
+/* --- cámaras --- */
+try {
+  const cam = await (await fetch("/cameras")).json();
+  const list = cam.cameras || [];
+  $("cameras").innerHTML = `
+    <div class="warnbar" style="margin-bottom:14px">
+      <b>No mide tráfico.</b> ${esc(cam.limitation || "")}
+    </div>
+    <div class="kpis">
+      <div class="kpi"><div class="k">en la ciudad</div><div class="v">${cam.total_in_city ?? 0}</div></div>
+      <div class="kpi"><div class="k">en la zona</div><div class="v">${cam.in_zone ?? 0}</div></div>
+      <div class="kpi"><div class="k">secciones observadas</div>
+        <div class="v">${cam.sections_observed_count ?? 0}</div>
+        <div class="u">≤ ${cam.audit_radius_m ?? "?"} m</div></div>
+    </div>
+    ${list.length ? `<div class="scroll mt">
+      <table><thead><tr>
+        <th>Cámara</th><th>Sección más próxima</th><th class="num">m</th>
+      </tr></thead><tbody>` +
+      list.map((k) => `<tr>
+        <td>${esc(k.name || k.id)}</td>
+        <td>${esc(k.nearest_section || "—")}</td>
+        <td class="num">${k.distance_to_section_m ?? "—"}</td>
+      </tr>`).join("") +
+      `</tbody></table></div>` : '<div class="note">Sin cámaras en la zona.</div>'}
+    <div class="note mt">
+      Uso previsto: auditoría de procedencia, para saber qué mediciones son
+      contrastables con un punto de observación del Ayuntamiento.
+    </div>`;
+} catch (e) {
+  $("cameras").innerHTML = `<span class="err">${esc(e.message)}</span>`;
+}
+
+/* --- procedencia y trampas --- */
+$("provenance").innerHTML = `
+  <table>
+    <thead><tr><th>Magnitud</th><th>Origen</th><th>Qué significa</th></tr></thead>
+    <tbody>
+      <tr><td>Intensidad, velocidad, ocupación</td>
+        <td><span class="tag pos">REAL</span></td>
+        <td>Medido por el Ayuntamiento. Fuente: <span class="mono">srvDatasetTrafico</span>.</td></tr>
+      <tr><td>Nombre de la calle, carriles, sentido</td>
+        <td><span class="tag warn">DERIVADO</span></td>
+        <td>Unido por proximidad (≤250 m) con la red viaria de OSM. Puede fallar.</td></tr>
+      <tr><td>Longitud</td>
+        <td><span class="tag warn">DERIVADO</span></td>
+        <td>Perímetro del polígono de la sección, no una longitud de calzada.</td></tr>
+      <tr><td>Capacidad, saturación, tiempo de trayecto</td>
+        <td><span class="tag warn">DERIVADO</span></td>
+        <td>Capacidad = carriles × 1800 veh/h/lane. Parámetro del modelo.</td></tr>
+      <tr><td>Emisiones</td>
+        <td><span class="tag warn">DERIVADO</span></td>
+        <td>vehículos × longitud × 120 g CO₂/veh-km. Sin factor por combustible.</td></tr>
+      <tr><td>Tráfico redistribuido y todos los KPIs</td>
+        <td><span class="tag neg">SIMULADO</span></td>
+        <td>Salen de reglas, no del feed. Es lo que hay que juzgar.</td></tr>
+    </tbody>
+  </table>`;
+
+$("traps").innerHTML = [
+  "La velocidad del feed tiene mediana de 1 km/h: no es utilizable como velocidad real. Se usa solo como severidad relativa y, por debajo de 10 km/h, se sustituye por la velocidad de referencia de 30 km/h.",
+  "La ocupación va de 0 a 51 y su unidad no está documentada: se muestra pero no entra en ningún cálculo.",
+  "21 de 81 secciones del feed no son del día; la más antigua es de 2016. Las marcadas como antiguas bajan la confianza del veredicto.",
+  "13 de 26 secciones de la zona tienen intensidad 0, lo que puede ser un estado real o un sensor caído. No se distinguen.",
+  "El reparto del tráfico desplazado se hace por capacidad libre y proximidad, no por conectividad real de los cruces.",
+  "Sin histórico no hay modelo predictivo: todo el análisis es de estado actual, no de evolución.",
+  "Los índices de comercio y accesibilidad son pesos configurados, no mediciones.",
+  "Los nombres llegan en euskera desde OSM; los alias en castellano son solo de presentación.",
+].map((t) => `<li>${esc(t)}</li>`).join("");
+</script>
+</body>
+</html>

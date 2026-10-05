@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Escenario · Peatonalizar calles (Bilbao)</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/base.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Escenario</h1>
+    <div class="sub">
+      Qué calle se interviene y con qué acción. La acción define qué reglas
+      se aplican; el resto de parámetros son pesos del modelo.
+    </div>
+  </header>
+
+  <div id="hint" hidden>
+    <div class="infobar">
+      Todavía no has elegido escenario. Esta pantalla lo define y guarda para
+      las siguientes.
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Definir intervención</h2>
+    <div class="row">
+      <input id="street" type="text" placeholder="Calle: Gran Vía, Heros, 328…" value="Gran Vía">
+      <select id="action">
+        <option value="close">Peatonalizar (cierre total)</option>
+        <option value="traffic_restriction">Restricción parcial de tráfico</option>
+      </select>
+      <label class="field" for="ratio">Tráfico permitido
+        <input id="ratio" type="number" min="0" max="1" step="0.05" value="0.6">
+      </label>
+      <button id="go">Simular y evaluar</button>
+    </div>
+    <div class="note">
+      La búsqueda acepta el nombre de OSM en euskera, el alias en castellano
+      o el <span class="mono">CodigoSeccion</span> del feed.
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Sección objetivo</h2>
+    <div id="target" class="loading">Escribe una calle para ver su ficha.</div>
+  </div>
+
+  <div class="split">
+    <div class="card">
+      <h2>Efectos configurados de la acción</h2>
+      <div id="effects" class="loading">—</div>
+    </div>
+    <div class="card">
+      <h2>Secciones vecinas candidatas</h2>
+      <div id="neighbours" class="loading">—</div>
+      <div class="note mt">
+        Son las secciones que absorberán el tráfico desplazado, elegidas por
+        proximidad y capacidad libre. No por conectividad real de los cruces.
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Calles de la zona</h2>
+    <div class="row" id="chips"></div>
+    <div class="note">Pulsa una para usarla como objetivo.</div>
+  </div>
+
+  <footer class="bot">
+    <a href="/">← Datos</a> · <a href="/docs">/docs</a> · <a href="/demo">/demo</a>
+  </footer>
+</div>
+
+<script type="module">
+import { $, esc, renderNav, scenarioFromForm, setScenario, showError, getScenario } from "/static/ui.js";
+
+renderNav("/escenario");
+
+if (new URLSearchParams(location.search).get("hint")) $("hint").hidden = false;
+
+/* Prefija el escenario guardado, si lo hay. */
+const prev = getScenario();
+if (prev) {
+  $("street").value = prev.street_id || $("street").value;
+  $("action").value = prev.action || $("action").value;
+  if (prev.params?.allowed_ratio != null) $("ratio").value = prev.params.allowed_ratio;
+}
+
+/* Alternar entre las dos acciones habilita o no el parámetro de ratio. */
+const ratioRow = $("ratio").closest("label");
+function syncAction() {
+  const isRestrict = $("action").value === "traffic_restriction";
+  ratioRow.style.display = isRestrict ? "" : "none";
+  if (!isRestrict) $("ratio").value = 0.6;
+}
+$("action").addEventListener("change", syncAction);
+syncAction();
+
+/* --- ficha de la sección objetivo y efectos (POST /scenario, no simula) --- */
+let lookupSeq = 0;
+async function lookup() {
+  const street = $("street").value.trim();
+  if (!street) return;
+  const seq = ++lookupSeq;
+  $("target").innerHTML = '<span class="loading">Buscando…</span>';
+
+  try {
+    const r = await fetch("/scenario", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(scenarioFromForm($("street"), $("action"), $("ratio"))),
+    });
+    const d = await r.json();
+    if (seq !== lookupSeq) return;  // llegó una respuesta más nueva
+    if (!r.ok) throw new Error(d.detail || r.statusText);
+    renderTarget(d);
+  } catch (e) {
+    if (seq !== lookupSeq) return;
+    showError($("target"), e);
+    $("effects").innerHTML = $("neighbours").innerHTML = '<span class="note">—</span>';
+  }
+}
+
+function renderTarget(d) {
+  const t = d.target;
+  $("target").innerHTML = `
+    <div style="font-size:16px;font-weight:600;margin-bottom:4px">
+      ${esc(t.display_name || t.name || t.id)}
+    </div>
+    <div class="note" style="margin-bottom:12px">
+      Sección <span class="mono">${esc(t.id)}</span>
+      · OSM: ${esc(t.name || "sin nombre")}
+      ${t.observed_at ? `· observada ${esc(t.observed_at)}` : ""}
+    </div>
+    <div class="kpis">
+      <div class="kpi"><div class="k">tráfico</div><div class="v">${Math.round(t.vehicles_per_hour)}</div>
+        <div class="u">veh/h</div></div>
+      <div class="kpi"><div class="k">carriles</div><div class="v">${t.lanes ?? "—"}</div></div>
+      <div class="kpi"><div class="k">longitud</div><div class="v">${Math.round(t.length_m)}</div>
+        <div class="u">m (perímetro)</div></div>
+      <div class="kpi"><div class="k">frescura</div>
+        <div class="v ${t.is_fresh ? "pos" : "neg"}" style="font-size:15px">
+        ${t.is_fresh ? "hoy" : "antigua"}</div></div>
+    </div>
+    ${t.is_fresh ? "" :
+      '<div class="warnbar mt">Esta sección no tiene lectura de hoy: la simulación arranca de un dato antiguo.</div>'}`;
+
+  const fx = d.configured_effects || {};
+  $("effects").innerHTML = Object.keys(fx).length
+    ? `<table><tbody>` + Object.entries(fx).map(([k, v]) => `
+        <tr><td class="mono">${esc(k)}</td>
+          <td class="num ${Number(v) > 0 ? "pos" : Number(v) < 0 ? "neg" : "zero"}">
+          ${Number(v) > 0 ? "+" : ""}${Math.round(Number(v) * 100)}%</td></tr>`).join("") +
+      `</tbody></table>
+      <div class="note mt">Pesos del modelo, no mediciones. Configurables por entorno.</div>`
+    : '<span class="note">—</span>';
+
+  const nb = d.neighbours || [];
+  $("neighbours").innerHTML = nb.length
+    ? `<div class="tags">${nb.map((n) =>
+        `<span class="tag plain mono">${esc(n)}</span>`).join("")}</div>`
+    : '<span class="note">Sin vecinas dentro del radio: el tráfico desplazado no podría repartirse.</span>';
+}
+
+let debounce;
+$("street").addEventListener("input", () => {
+  clearTimeout(debounce);
+  debounce = setTimeout(lookup, 220);
+});
+$("action").addEventListener("change", lookup);
+$("ratio").addEventListener("change", lookup);
+
+/* --- chips de las calles disponibles --- */
+try {
+  const t = await (await fetch("/traffic")).json();
+  const named = (t.sections || [])
+    .filter((s) => s.display_name || s.name)
+    .sort((a, b) => (b.vehicles_per_hour || 0) - (a.vehicles_per_hour || 0))
+    .slice(0, 14);
+  $("chips").innerHTML = named.map((s) =>
+    `<button class="ghost" data-id="${esc(s.id)}"
+       title="${Math.round(s.vehicles_per_hour)} veh/h">
+       ${esc(s.display_name || s.name)}</button>`).join("");
+  $("chips").addEventListener("click", (e) => {
+    const id = e.target?.dataset?.id;
+    if (!id) return;
+    $("street").value = id;
+    lookup();
+  });
+} catch (e) {
+  $("chips").innerHTML = `<span class="err">${esc(e.message)}</span>`;
+}
+
+/* --- acción principal --- */
+$("go").addEventListener("click", async () => {
+  const body = scenarioFromForm($("street"), $("action"), $("ratio"));
+  $("go").disabled = true;
+  $("go").textContent = "Simulando…";
+  try {
+    setScenario(body);
+    location.href = "/simulacion";
+  } catch (e) {
+    showError($("target"), e);
+    $("go").disabled = false;
+    $("go").textContent = "Simular y evaluar";
+  }
+});
+
+if ($("street").value.trim()) lookup();
+</script>
+</body>
+</html>

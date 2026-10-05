@@ -1,4 +1,4 @@
-"""Pruebas de la API con datos sintéticos en memoria (sin red)."""
+﻿"""Pruebas de la API con datos sintéticos en memoria (sin red)."""
 
 from __future__ import annotations
 
@@ -55,13 +55,27 @@ def client() -> TestClient:
         yield c
 
 
-def test_index_page_is_served(client) -> None:
-    """La raíz debe devolver la página, no un 404."""
-    resp = client.get("/")
+def test_every_flow_screen_is_served(client) -> None:
+    """Cada etapa del flujo debe devolver su HTML, no un 404."""
+    for path, marker in (
+        ("/", "Peatonalizar"),
+        ("/datos", "Cobertura"),
+        ("/escenario", "Definir intervención"),
+        ("/simulacion", "Secciones afectadas"),
+        ("/jev", "veredicto"),
+    ):
+        resp = client.get(path)
+        assert resp.status_code == 200, path
+        assert "text/html" in resp.headers["content-type"], path
+        assert marker in resp.text, f"{path} no parece la pantalla correcta"
 
-    assert resp.status_code == 200
-    assert "text/html" in resp.headers["content-type"]
-    assert "Peatonalizar" in resp.text
+
+def test_static_assets_are_served(client) -> None:
+    """El CSS y el módulo JS compartidos deben servirse sin build."""
+    for path, fragment in (("/static/base.css", "--accent"), ("/static/ui.js", "renderNav")):
+        resp = client.get(path)
+        assert resp.status_code == 200, path
+        assert fragment in resp.text, path
 
 
 def test_favicon_is_served(client) -> None:
@@ -70,6 +84,38 @@ def test_favicon_is_served(client) -> None:
         resp = client.get(path)
         assert resp.status_code == 200, path
         assert "image/svg+xml" in resp.headers["content-type"]
+
+
+def test_cameras_are_context_only_and_flag_their_limit(client, synthetic_city, monkeypatch) -> None:
+    """Las cámaras no miden tráfico: se expone como capa de contexto.
+
+    Verificado contra el feed real: no trae cifras y sus instantáneas dan 404.
+    """
+    monkeypatch.setattr(
+        "app.main.load_cameras",
+        lambda cfg: {
+            "source": "bilbao.eus srvDatasetCamaras",
+            "total_in_city": 119,
+            "in_zone": 1,
+            "usable_for_simulation": False,
+            "limitation": "El feed no contiene cifras de tráfico",
+            "cameras": [
+                {
+                    "id": "4081",
+                    "name": "Plza. Museo",
+                    "centroid": [-2.9400, 43.268],
+                }
+            ],
+        },
+    )
+
+    body = client.get("/cameras").json()
+
+    assert body["usable_for_simulation"] is False
+    assert body["in_zone"] == 1
+    # La cámara está sobre el centroide de s1, luego se le asocia.
+    assert body["cameras"][0]["nearest_section"] == "calle-s1"
+    assert body["sections_observed_count"] >= 1
 
 
 def test_health_reports_cache(client) -> None:
@@ -83,14 +129,14 @@ def test_city_returns_provenance(client, synthetic_city) -> None:
     body = client.get("/city").json()
 
     assert len(body["sections"]) == 5
-    assert body["sections"][0]["provenance"] == "real"
-    assert body["metrics"][0]["provenance"] == "derived"
+    assert body["sections"][0]["provenance"] == "REAL"
+    assert body["metrics"][0]["provenance"] == "DERIVADO"
 
 
 def test_traffic_marks_freshness(client, synthetic_city) -> None:
     body = client.get("/traffic").json()
 
-    assert body["source"] == "real"
+    assert body["source"] == "REAL"
     assert "is_fresh" in body["sections"][0]
 
 
@@ -130,7 +176,7 @@ def test_simulate_returns_all_six_kpis(client, synthetic_city) -> None:
         "accessibility_change",
     ):
         assert key in kpis
-    assert body["provenance"] == "simulated"
+    assert body["provenance"] == "SIMULADO"
 
 
 def test_evaluate_returns_simulation_and_jev(client, synthetic_city) -> None:
@@ -148,7 +194,7 @@ def test_evaluate_verdict_endpoint(client, synthetic_city) -> None:
         "/evaluate/verdict", json={"street_id": "s1", "action": "close"}
     ).json()
 
-    assert verdict["traffic_risk"] in {"LOW", "ACCEPTABLE", "HIGH"}
+    assert verdict["traffic_risk"] in {"BAJO", "ACEPTABLE", "ALTO"}
     assert 0.0 <= verdict["confidence"] <= 1.0
 
 

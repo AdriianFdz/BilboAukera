@@ -99,6 +99,14 @@ def _outer_ring(geom_type: str, coords: list[Any]) -> list[Any]:
     return coords[0]
 
 
+def _safe_float(value: object) -> float | None:
+    """Convierte a float tolerando valores nulos o no numéricos."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _polygon_perimeter_m(geom_type: str, coords: list[Any]) -> float:
     """Perímetro de la geometría en metros (proxy de longitud de tramo)."""
     ring = _outer_ring(geom_type, coords)
@@ -356,6 +364,77 @@ def compute_metrics(section: Section, cfg: Settings) -> SectionMetrics:
         travel_time_s=round(travel_time, 1),
         emissions_g_co2_per_hour=round(emissions, 1),
     )
+
+
+def load_cameras(cfg: Settings) -> dict[str, Any]:
+    """Puntos de observación del Ayuntamiento dentro de la zona.
+
+    **No alimenta la simulación.** El feed no trae ninguna cifra de tráfico
+    (ni intensidad, ni conteo, ni velocidad) y las instantáneas que promete
+    el campo `URL` devuelven 404, así que no hay nada medible que extraer.
+
+    Lo único real que aporta es *dónde* se observa la calle, que sirve para
+    auditar la procedencia: qué secciones tienen un punto de verificación
+    cercano y quién puede contrastar la medición. Por eso `usable` es False
+    y no se usa en ningún cálculo del motor.
+
+    Se expone como `/cameras` para que la pantalla de datos muestre la capa
+    de contexto con su limitación explícita, en vez de omitirla en silencio.
+    """
+    raw = _cached_fetch("camaras", cfg.camaras_url)
+    empty = {
+        "source": "bilbao.eus srvDatasetCamaras",
+        "total_in_city": 0,
+        "in_zone": 0,
+        "usable_for_simulation": False,
+        "limitation": (
+            "El feed no contiene cifras de tráfico y las instantáneas del campo "
+            "URL devuelven 404 (verificado). Solo se usa como capa de contexto."
+        ),
+        "cameras": [],
+    }
+    if not raw or "features" not in raw:
+        return empty
+
+    cameras: list[dict[str, Any]] = []
+    total = 0
+    for feat in raw["features"]:
+        geom = feat.get("geometry") or {}
+        if geom.get("type") != "Point":
+            continue
+        coords = geom.get("coordinates") or []
+        if len(coords) < 2:
+            continue
+        total += 1
+        lon, lat = float(coords[0]), float(coords[1])
+        if not _in_bbox(lon, lat, cfg):
+            continue
+        props = feat.get("properties") or {}
+        cameras.append(
+            {
+                "id": str(props.get("ID") or ""),
+                "name": props.get("Nombre") or props.get("Texto_SPA"),
+                "type": props.get("Tipo"),
+                "rotation_deg": _safe_float(props.get("Rotacion_SPA")),
+                "centroid": [lon, lat],
+                "provenance": Provenance.REAL.value,
+            }
+        )
+
+    logger.info("Cámaras: %d en la ciudad, %d dentro de la zona", total, len(cameras))
+    return {
+        "source": "bilbao.eus srvDatasetCamaras",
+        "total_in_city": total,
+        "in_zone": len(cameras),
+        "usable_for_simulation": False,
+        "limitation": empty["limitation"],
+        "cameras": cameras,
+    }
+
+
+def nearest_camera_m(camera: dict[str, Any], section: Section) -> float:
+    """Distancia en metros entre una cámara y el centroide de una sección."""
+    return haversine_m(tuple(camera["centroid"]), section.centroid)
 
 
 def load_city_state(cfg: Settings) -> CityState:

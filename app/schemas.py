@@ -12,9 +12,9 @@ from pydantic import BaseModel, Field, model_validator
 class Provenance(StrEnum):
     """Origen del dato, para no presentar estimaciones como mediciones."""
 
-    REAL = "real"
-    DERIVED = "derived"
-    SIMULATED = "simulated"
+    REAL = "REAL"
+    DERIVED = "DERIVADO"
+    SIMULATED = "SIMULADO"
 
 
 class Action(StrEnum):
@@ -31,19 +31,19 @@ class Action(StrEnum):
 class RiskLevel(StrEnum):
     """Niveles de riesgo/impacto emitidos por Jev."""
 
-    LOW = "LOW"
-    ACCEPTABLE = "ACCEPTABLE"
-    HIGH = "HIGH"
-    POSITIVE = "POSITIVE"
-    NEGATIVE = "NEGATIVE"
+    LOW = "BAJO"
+    ACCEPTABLE = "ACEPTABLE"
+    HIGH = "ALTO"
+    POSITIVE = "POSITIVO"
+    NEGATIVE = "NEGATIVO"
 
 
 class OverallStatus(StrEnum):
     """Veredicto global de Jev."""
 
     FAVORABLE = "FAVORABLE"
-    ACCEPTABLE = "ACCEPTABLE"
-    REVIEW_REQUIRED = "REVIEW_REQUIRED"
+    ACCEPTABLE = "ACEPTABLE"
+    REVIEW_REQUIRED = "REQUIERE REVISIÓN"
 
 
 class Section(BaseModel):

@@ -1,0 +1,123 @@
+/* Estilo compartido por las pantallas del MVP. Sin dependencias externas. */
+
+:root {
+  --bg: #10141a; --card: #181d26; --line: #262d39; --inner: #0d1117;
+  --txt: #e6ebf2; --dim: #8b97a8; --accent: #4da3ff;
+  --pos: #3ecf8e; --neg: #ff6b6b; --warn: #ffb454;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--txt);
+  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.wrap { max-width: 1040px; margin: 0 auto; padding: 24px 20px 56px; }
+
+header.top { margin-bottom: 22px; }
+h1 { font-size: 21px; margin: 0 0 4px; }
+.sub { color: var(--dim); font-size: 14px; }
+
+/* Navegación entre pantallas: el flujo del MVP es el orden de las pestañas. */
+nav.screens {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin: 0 0 24px; padding: 6px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+}
+nav.screens a {
+  flex: 1 1 auto; text-align: center;
+  padding: 9px 12px; border-radius: 7px;
+  color: var(--dim); text-decoration: none; font-size: 13.5px;
+  border: 1px solid transparent; white-space: nowrap;
+}
+nav.screens a:hover { color: var(--txt); background: var(--inner); }
+nav.screens a[aria-current="page"] {
+  color: var(--txt); background: var(--inner);
+  border-color: var(--line); font-weight: 600;
+}
+nav.screens .step { color: var(--dim); font-size: 11px; opacity: .7; margin-right: 5px; }
+
+.card {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 10px; padding: 20px; margin-bottom: 18px;
+}
+h2 {
+  font-size: 13px; margin: 0 0 14px; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--dim); font-weight: 600;
+}
+h3 { font-size: 14px; margin: 20px 0 8px; font-weight: 600; }
+
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+
+input, select, button {
+  background: var(--inner); color: var(--txt); border: 1px solid var(--line);
+  border-radius: 7px; padding: 9px 11px; font-size: 14px;
+}
+input[type="text"] { min-width: 230px; }
+input[type="number"] { min-width: 84px; }
+button {
+  background: var(--accent); color: #06121f; font-weight: 600; cursor: pointer;
+}
+button:hover { filter: brightness(1.1); }
+button.ghost { background: transparent; color: var(--txt); font-weight: 500; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+label.field { color: var(--dim); font-size: 13px; }
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 10px; }
+.kpi { background: var(--inner); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+.kpi .k { font-size: 11.5px; color: var(--dim); text-transform: uppercase; letter-spacing: .04em; }
+.kpi .v { font-size: 21px; font-weight: 650; margin-top: 3px; }
+.kpi .u { font-size: 11.5px; color: var(--dim); }
+
+.pos { color: var(--pos); } .neg { color: var(--neg); } .zero { color: var(--dim); }
+
+.tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.tag {
+  font-size: 12.5px; padding: 5px 11px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--inner); display: inline-block;
+}
+/* Los valores del enum llevan espacios y acentos ("REQUIERE REVISIÓN"), así que
+   no pueden usarse como clase CSS: el tono se asigna en JS (tone() en ui.js). */
+.tag.pos { color: var(--pos); border-color: #1e5c43; }
+.tag.warn { color: var(--warn); border-color: #6b5426; }
+.tag.neg { color: var(--neg); border-color: #6b2626; }
+.tag.plain { color: var(--dim); }
+
+ul { margin: 8px 0 0; padding-left: 20px; color: var(--warn); font-size: 13.5px; }
+ul.plain { color: var(--dim); }
+li { margin-bottom: 3px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--line); }
+th { color: var(--dim); font-weight: 500; font-size: 12px; text-transform: uppercase; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tbody tr:hover { background: #141922; }
+
+.note { color: var(--dim); font-size: 13px; }
+.note.mt { margin-top: 12px; }
+
+.warnbar {
+  background: #2a2010; border: 1px solid #6b5426; color: var(--warn);
+  padding: 10px 13px; border-radius: 8px; font-size: 13.5px; margin-bottom: 18px;
+}
+.infobar {
+  background: #10201a; border: 1px solid #1e5c43; color: var(--pos);
+  padding: 10px 13px; border-radius: 8px; font-size: 13.5px; margin-bottom: 18px;
+}
+
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.split > .card { margin-bottom: 0; }
+.stack > .card:last-child { margin-bottom: 0; }
+
+.scroll { max-height: 420px; overflow-y: auto; }
+.mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12.5px; }
+.loading { color: var(--dim); font-size: 13.5px; }
+.err { color: var(--neg); font-size: 13.5px; }
+
+a { color: var(--accent); }
+footer.bot { color: var(--dim); font-size: 13px; margin-top: 28px; }
+
+@media (max-width: 780px) { .split { grid-template-columns: 1fr; } }

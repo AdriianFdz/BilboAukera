@@ -115,11 +115,37 @@ def test_max_section_increase_exceeds_zone_change(city, cfg) -> None:
     assert result.max_section_increase_pct > 20.0
 
 
-def test_pedestrianization_raises_pedestrians_and_emissions_drop(city, cfg) -> None:
+def test_redistribution_inside_zone_does_not_cut_emissions(city, cfg) -> None:
+    """Repartir tráfico dentro de la zona no puede reducir emisiones.
+
+    El reparto por capacidad libre puede trasladar vehículos a calles más
+    cortas, lo que bajaría `vehículos x longitud` sin que nadie recorra
+    menos. Ese ahorro es un artefacto, no un efecto real.
+    """
+    result = run(city, cfg)
+
+    assert result.displaced_outside_zone == 0.0
+    assert result.kpis.emissions_change == pytest.approx(0.0, abs=0.01)
+    assert any("desvío neutro" in n for n in result.notes)
+
+
+def test_emissions_only_drop_when_traffic_leaves_zone(cfg) -> None:
+    """Si el tráfico sale de la zona, ese tráfico sí deja de emitir."""
+    sections = [
+        make_section("target", -2.9400, 3000.0),
+        make_section("full1", -2.9430, 3600.0, lanes=2),
+        make_section("full2", -2.9370, 3600.0, lanes=2),
+    ]
+    result = run(sections, cfg)
+
+    assert result.displaced_outside_zone > 0
+    assert result.kpis.emissions_change < 0.0
+
+
+def test_pedestrianization_raises_pedestrians(city, cfg) -> None:
     result = run(city, cfg)
 
     assert result.kpis.pedestrian_change == 25.0
-    assert result.kpis.emissions_change < 0
 
 
 def test_find_section_by_partial_name(city) -> None:
