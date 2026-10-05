@@ -49,10 +49,8 @@ body {
   display: flex; flex-wrap: wrap; gap: 16px; align-items: center;
 }
 .marca { display: flex; align-items: center; gap: 12px; margin-right: auto; }
-/* El escudo oficial no se puede dibujar: marcador tipográfico provisional. */
 .marca .escudo {
-  width: 36px; height: 36px; border: 1px solid var(--linea);
-  display: grid; place-items: center; color: var(--tinta-suave); font-size: 11px;
+  width: 44px; height: 44px; object-fit: contain;
 }
 .marca .nombre { font: 600 20px/1.2 var(--f-titulo); }
 .marca .servicio { font-size: 14px; color: var(--tinta-suave); }
@@ -156,10 +154,17 @@ p { max-width: 68ch; }
 }
 
 /* --- cifras --- */
-.cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0; margin: 0; }
+.cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr)); gap: 0; margin: 0; }
 .cifra { padding: 14px 16px; border-left: 1px solid var(--linea); }
 .cifra:first-child { border-left: 0; padding-left: 0; }
-.cifra .valor { font: 600 26px/1.2 var(--f-titulo); font-variant-numeric: tabular-nums; }
+.cifra .valor {
+  font: 600 26px/1.2 var(--f-titulo); font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.cifra .valor .estado {
+  display: inline-block; max-width: 100%; font-size: 15px; line-height: 1.25;
+  white-space: normal; overflow-wrap: anywhere;
+}
 .cifra .etiqueta { font-size: 14px; color: var(--tinta-suave); }
 .valor.sube { color: var(--rojo-oscuro); }
 .valor.baja { color: var(--ok); }
@@ -172,11 +177,22 @@ caption { text-align: left; font-size: 14px; color: var(--tinta-suave); padding-
 th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--linea); vertical-align: top; }
 thead th { background: var(--fondo); color: var(--tinta); font-weight: 600; font-size: 14px; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.tabla-demo { min-width: 440px; }
+#demo { overflow-x: auto; }
+.tabla-demo .estado-demo { width: 122px; }
+.tabla-demo .estado-demo .estado {
+  display: inline-block; max-width: 122px; font-size: 13px;
+  line-height: 1.15; white-space: normal; overflow-wrap: anywhere;
+}
+.tabla-demo td small { color: var(--tinta-suave); font-size: 12px; line-height: 1.2; }
 
 /* --- estado: texto con color, sin píldoras --- */
 .estado { font-weight: 600; font-size: 15px; }
 .estado.ok { color: var(--ok); }
-.estado.aviso { color: var(--aviso); }
+.estado.aviso {
+  color: var(--aviso); border: 0; background: transparent;
+  padding: 0; margin: 0; max-width: 100%;
+}
 .estado.error { color: var(--rojo-oscuro); }
 .estado.neutro { color: var(--tinta-suave); }
 
@@ -243,13 +259,20 @@ ul.lista.aviso-lista li { color: var(--aviso); }
 
 /* --- mapa --- */
 .mapa { border: 1px solid var(--linea); background: var(--fondo); padding: 12px; }
-.mapa svg { display: block; width: 100%; height: auto; }
+.mapa-leaflet { width: 100%; height: 520px; }
+.mapa-leaflet .leaflet-tooltip { font-family: var(--f-texto); }
+.selector-mapa { display: flex; gap: 8px; margin: 0 0 12px; }
+.mapa-atribucion { margin: 4px 0 0; font-size: 12px; color: var(--tinta-suave); }
 .leyenda-mapa { list-style: none; margin: 12px 0 0; padding: 0; font-size: 15px; }
 .leyenda-mapa li { display: flex; gap: 10px; align-items: baseline; margin-bottom: 4px; }
 .muestra {
   width: 14px; height: 14px; border: 1px solid var(--linea);
   flex: 0 0 auto; display: inline-block;
 }
+.trafico-bajo { background: hsl(120 78% 42%); }
+.trafico-medio { background: hsl(60 78% 42%); }
+.trafico-alto { background: hsl(0 78% 42%); }
+.muestra-camara { border-radius: 50%; background: var(--tinta); }
 
 @media (max-width: 640px) {
   .contenido { padding: 16px; }

@@ -126,22 +126,28 @@ def neighbour_ids_of(
 
 
 def _redistribute(
-    displaced: float, views: list[_SectionView]
+    displaced: float, views: list[_SectionView], outside_share: float
 ) -> float:
-    """Reparte el tráfico desplazado por capacidad libre y devuelve el sobrante."""
+    """Reparte tráfico y devuelve lo que abandona la zona.
+
+    La zona de estudio es una muestra acotada, así que una parte configurable
+    del tráfico desplazado no se asigna artificialmente a sus pocas vecinas.
+    """
+    outside = displaced * max(0.0, min(1.0, outside_share))
+    to_redistribute = displaced - outside
     spare = [max(0.0, v.lanes * CAPACITY_PER_LANE - v.simulated_vehicles) for v in views]
     total_spare = sum(spare)
 
-    if total_spare <= 0 or displaced <= 0:
+    if total_spare <= 0 or to_redistribute <= 0:
         return displaced
 
     for view, room in zip(views, spare, strict=True):
-        view.simulated_vehicles += displaced * (room / total_spare)
+        view.simulated_vehicles += to_redistribute * (room / total_spare)
 
     overflow = sum(
         max(0.0, v.simulated_vehicles - v.lanes * CAPACITY_PER_LANE) for v in views
     )
-    return min(displaced, overflow)
+    return min(displaced, outside + overflow)
 
 
 def _emissions(vehicles: float, section: Section, cfg: Settings) -> float:
@@ -151,46 +157,18 @@ def _emissions(vehicles: float, section: Section, cfg: Settings) -> float:
 
 def simulated_zone_emissions(
     views: dict[str, _SectionView],
-    baseline: float,
-    displaced_outside: float,
     cfg: Settings,
 ) -> float:
-    """Emisiones de la zona tras la intervención, de forma conservadora.
+    """Emisiones estimadas de la zona tras aplicar el escenario.
 
-    Regla: **redistribuir tráfico dentro de la zona no ahorra emisiones.**
-
-    Al repartir por capacidad libre, los vehículos aterrizan en calles que
-    pueden ser más cortas que la intervenida. Como las emisiones son
-    `vehículos x longitud`, eso bajaría el total sin que ningún vehículo
-    recorra menos: sería un artefacto del modelo, no un efecto real.
-
-    Así que se parte de las emisiones reales de partida y solo se descuentan
-    las del tráfico que **abandona la zona**, medido a la longitud media que
-    ya recorría. Si ese tráfico sale hacia otra calle de la ciudad, el ahorro
-    es provisional: por eso `displaced_outside` también penaliza la
-    confianza del veredicto.
+    La magnitud se calcula con el tráfico simulado de cada sección. De este
+    modo, cerrar una sección elimina sus emisiones y redistribuir vehículos
+    permite reflejar el coste de los desvíos dentro de la zona. El resultado
+    sigue siendo una aproximación porque no modela rutas completas.
     """
-    leaked_length = _mean_length_of_reduced(views)
-    avoided = displaced_outside * leaked_length * cfg.emission_factor_co2 / 1000.0
-    return max(0.0, baseline - avoided)
-
-
-def _mean_length_of_reduced(views: dict[str, _SectionView]) -> float:
-    """Longitud media de las secciones que han perdido tráfico, ponderada."""
-    reduced = [
-        v
-        for v in views.values()
-        if v.baseline_vehicles - v.simulated_vehicles > 1e-9
-    ]
-    lost_total = sum(v.baseline_vehicles - v.simulated_vehicles for v in reduced)
-    if lost_total <= 0:
-        return 0.0
-    return (
-        sum(
-            v.section.length_m * (v.baseline_vehicles - v.simulated_vehicles)
-            for v in reduced
-        )
-        / lost_total
+    return sum(
+        _emissions(view.simulated_vehicles, view.section, cfg)
+        for view in views.values()
     )
 
 
@@ -258,7 +236,11 @@ def simulate(
     # --- Reglas 2 y 3: redistribución y tráfico que sale de la zona ---
     displaced = target.baseline_vehicles - target.simulated_vehicles
     neighbour_ids = neighbour_ids_of(target_section, by_id, list(by_id), cfg)
-    displaced_outside = _redistribute(displaced, [views[sid] for sid in neighbour_ids])
+    displaced_outside = _redistribute(
+        displaced,
+        [views[sid] for sid in neighbour_ids],
+        cfg.displaced_outside_share,
+    )
 
     if displaced_outside > 0:
         notes.append(
@@ -269,17 +251,15 @@ def simulate(
         notes.append("Sin secciones vecinas dentro del radio: no hay redistribución.")
     if displaced_outside <= 0 and displaced > 0:
         notes.append(
-            "Todo el tráfico desplazado cabe dentro de la zona. Las emisiones no "
-            "se modelan como ahorro: sin conocer la distancia real de desvío no "
-            "se puede afirmar que los vehículos recorran menos, así que el modelo "
-            "asume desvío neutro. El beneficio ambiental de una peatonalización "
-            "no se puede quantificar con estos datos."
+            "Todo el tráfico desplazado se ha asignado a secciones de la zona. "
+            "La estimación de emisiones usa la longitud de esos tramos y no "
+            "representa rutas completas."
         )
 
     # --- Regla 4 y KPIs derivados ---
     simulated_zone_traffic = sum(v.simulated_vehicles for v in views.values())
     simulated_emissions = simulated_zone_emissions(
-        views, baseline_emissions, displaced_outside, cfg
+        views, cfg
     )
     simulated_time = _weighted_travel_time(list(views.values()), cfg)
 

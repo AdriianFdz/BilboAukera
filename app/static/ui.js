@@ -92,8 +92,7 @@ export function showError(el, e) {
 
 /* --- chrome institucional -------------------------------------------------
  * Cabecera, barra de navegación y pie se montan por JS para que las cinco
- * pantallas no repitan la misma marca. El escudo es un placeholder declarado:
- * no se puede dibujar el oficial sin su fichero.
+ * pantallas no repitan la misma marca.
  */
 
 const PANTALLAS = [
@@ -117,7 +116,7 @@ export function renderChrome(active, migas = []) {
      <header class="cabecera">
        <div class="contenido">
          <div class="marca">
-           <span class="escudo" role="img" aria-label="Escudo de Bilbao, pendiente">EB</span>
+           <img class="escudo" src="/static/emblema.png" alt="Emblema de Bilbao">
            <span>
              <span class="nombre">Bilbao</span><br>
              <span class="servicio">Laboratorio urbano digital</span>
@@ -179,4 +178,3 @@ export function renderChrome(active, migas = []) {
     );
   }
 }
-

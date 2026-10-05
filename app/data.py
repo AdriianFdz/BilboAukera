@@ -62,6 +62,79 @@ def _http_get_json(url: str, *, post: bool = False, payload: str | None = None) 
     return json.loads(raw)
 
 
+def _http_get_text(url: str) -> str:
+    """Descarga texto respetando la codificación declarada por el feed."""
+    import urllib.request
+
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "mvp-urbano-bilbao/0.1 (reto smart city)",
+            "Accept": "application/gml+xml, text/xml, */*",
+            "Referer": "https://www.bilbao.eus/",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=90) as resp:
+        return resp.read().decode("utf-8", errors="replace")
+
+
+def _cached_fetch_gml(name: str, url: str) -> list[dict[str, Any]]:
+    """Descarga GML y guarda una representación JSON normalizada."""
+    import xml.etree.ElementTree as ET
+
+    path = Path(settings.cache_path(name))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        try:
+            cached = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(cached, list):
+                logger.info("Usando caché local: %s", path)
+                return cached
+        except json.JSONDecodeError:
+            logger.warning("Caché GML corrupta, se reintenta la descarga: %s", path)
+
+    try:
+        root = ET.fromstring(_http_get_text(url))
+    except (ET.ParseError, OSError, ValueError) as exc:
+        logger.error("Fallo al descargar o interpretar %s (%s)", name, exc)
+        return []
+
+    cameras: list[dict[str, Any]] = []
+    for feature in root.iter():
+        if not feature.tag.endswith("feature"):
+            continue
+        values = {
+            child.tag.rsplit("}", 1)[-1]: (child.text or "").strip()
+            for child in feature
+            if not child.tag.endswith("geometry")
+        }
+        geometry = next((child for child in feature if child.tag.endswith("geometry")), None)
+        coordinates = next(
+            (node.text for node in geometry.iter() if node.tag.endswith("coordinates")),
+            None,
+        ) if geometry is not None else None
+        if not coordinates:
+            continue
+        try:
+            lon, lat = (float(value) for value in coordinates.strip().split(",")[:2])
+        except (TypeError, ValueError):
+            continue
+        cameras.append(
+            {
+                "ID": values.get("ID", ""),
+                "Camid": values.get("Camid", ""),
+                "Nombre": values.get("Nombre") or values.get("Texto_SPA", ""),
+                "Tipo": values.get("Tipo", ""),
+                "Rotacion_SPA": values.get("Rotacion_SPA", ""),
+                "Texto_SPA": values.get("Texto_SPA", ""),
+                "URL": values.get("URL", ""),
+                "coordinates": [lon, lat],
+            }
+        )
+    path.write_text(json.dumps(cameras, ensure_ascii=False), encoding="utf-8")
+    return cameras
+
+
 def _cached_fetch(name: str, url: str, *, post: bool = False, payload: str | None = None) -> object:
     """Descarga una fuente usando la caché en disco como red de seguridad."""
     path = Path(settings.cache_path(name))
@@ -385,7 +458,7 @@ def load_cameras(cfg: Settings) -> dict[str, Any]:
     Se expone como `/cameras` para que la pantalla de datos muestre la capa
     de contexto con su limitación explícita, en vez de omitirla en silencio.
     """
-    raw = _cached_fetch("camaras", cfg.camaras_url)
+    raw = _cached_fetch_gml("camaras_gml", cfg.camaras_url)
     empty = {
         "source": "bilbao.eus srvDatasetCamaras",
         "total_in_city": 0,
@@ -397,29 +470,25 @@ def load_cameras(cfg: Settings) -> dict[str, Any]:
         ),
         "cameras": [],
     }
-    if not raw or "features" not in raw:
+    if not raw:
         return empty
 
     cameras: list[dict[str, Any]] = []
     total = 0
-    for feat in raw["features"]:
-        geom = feat.get("geometry") or {}
-        if geom.get("type") != "Point":
-            continue
-        coords = geom.get("coordinates") or []
+    for raw_camera in raw:
+        coords = raw_camera.get("coordinates") or []
         if len(coords) < 2:
             continue
         total += 1
         lon, lat = float(coords[0]), float(coords[1])
         if not _in_bbox(lon, lat, cfg):
             continue
-        props = feat.get("properties") or {}
         cameras.append(
             {
-                "id": str(props.get("ID") or ""),
-                "name": props.get("Nombre") or props.get("Texto_SPA"),
-                "type": props.get("Tipo"),
-                "rotation_deg": _safe_float(props.get("Rotacion_SPA")),
+                "id": str(raw_camera.get("ID") or raw_camera.get("Camid") or ""),
+                "name": raw_camera.get("Nombre") or raw_camera.get("Texto_SPA"),
+                "type": raw_camera.get("Tipo"),
+                "rotation_deg": _safe_float(raw_camera.get("Rotacion_SPA")),
                 "centroid": [lon, lat],
                 "provenance": Provenance.REAL.value,
             }
@@ -601,7 +670,7 @@ def neighbour_ids(section: Section, sections: list[Section], cfg: Settings) -> l
 def cache_status(cfg: Settings) -> dict[str, Any]:
     """Estado de los ficheros de caché, para /health."""
     status: dict[str, Any] = {}
-    for name in ("trafico", "osm_streets", "camaras"):
+    for name in ("trafico", "osm_streets", "camaras", "camaras_gml"):
         path = Path(cfg.cache_path(name))
         if path.exists():
             age_h = (datetime.now().timestamp() - path.stat().st_mtime) / 3600.0

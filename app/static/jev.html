@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Jev · veredicto · Peatonalizar calles · Bilbao</title>
 <meta name="description" content="Clasificación estructurada del escenario de pedestrianización, por dimensión, con los umbrales aplicados y la confianza en el dato.">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/static/favicon.ico?v=20261005" type="image/x-icon">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:wght@600&display=swap" rel="stylesheet">
@@ -59,7 +59,7 @@
       <li>Es una clasificación por reglas sobre datos reales parciales, no una predicción.</li>
       <li>No tiene en cuenta comercio real, licencias ni opinión vecinal: solo lo que hay en el feed de tráfico.</li>
       <li>La redistribución usa capacidad y proximidad, no la conectividad real de los cruces. Es la mayor debilidad del modelo.</li>
-      <li>Las emisiones solo bajan si el tráfico sale de la zona: sin distancia de desvío no se puede afirmar que se recorra menos.</li>
+      <li>Las emisiones se estiman por tráfico simulado y longitud de cada sección; no representan rutas completas ni una medición ambiental.</li>
       <li>Los índices de comercio y accesibilidad son pesos configurados, no mediciones. Cambian si cambias <span class="mono">MVP_COMMERCIAL_PENALTY_CLOSE</span>.</li>
       <li>La confianza baja si hay fugas fuera de la zona, pocas secciones o lecturas antiguas. Es una señal sobre el dato, no sobre la ciudad.</li>
     </ul>

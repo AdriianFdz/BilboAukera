@@ -3,6 +3,85 @@
 Caso de uso acotado: **estimar qué pasa al pedestrianizar una calle.**
 Ejemplo de demostración: **Bilbao**, Abando e Indautxu.
 
+## Entregable
+
+### Problema y usuario objetivo
+
+La aplicación está dirigida a técnicos y responsables del Ayuntamiento de
+Bilbao relacionados con movilidad, urbanismo, medio ambiente, sostenibilidad,
+comercio y planificación urbana. Permite explorar una intervención urbana
+hipotética —por ejemplo, peatonalizar una calle— y estimar sus efectos sobre el
+tráfico, las calles cercanas, las emisiones, los flujos peatonales y la
+actividad comercial.
+
+Bilbao es el entorno de referencia porque combina alta densidad urbana,
+transporte público, movilidad diversa, actividad comercial y distintos niveles
+de tráfico y accesibilidad.
+
+### Arquitectura de la solución
+
+El MVP implementa el flujo:
+
+**DATOS → ESCENARIO → SIMULACIÓN → JEV → RESULTADO**
+
+![Arquitectura de la solución](docs/images/arquitectura.png)
+
+### Flujo de datos
+
+Los datos públicos de tráfico, cámaras y OpenStreetMap se normalizan y
+cachean. El usuario selecciona una calle y una acción; la API valida el
+escenario, el motor aplica reglas de redistribución y calcula los indicadores,
+y Jev clasifica el resultado con umbrales, confianza y alertas.
+
+![Flujo de datos](docs/images/flujo-de-datos.png)
+
+### Solución tecnológica
+
+- **Frontend:** HTML, CSS y JavaScript modular nativo, sin bundler; Leaflet
+  para el mapa con OpenStreetMap y Esri World Imagery.
+- **Backend:** Python y FastAPI.
+- **Modelo:** representación acotada de secciones de una zona de Bilbao, no un
+  gemelo digital completo.
+- **Datos:** Bilbao Open Data, Open Data Euskadi cuando proceda, OpenStreetMap
+  y el registro municipal de calles.
+- **Persistencia:** JSON y CSV locales para caché y funcionamiento reproducible.
+- **Decisión:** Jev como capa estructurada de evaluación y clasificación.
+- **IA generativa:** prevista como capa opcional para interpretar peticiones y
+  explicar resultados; no es necesaria para ejecutar el MVP.
+
+### Alcance funcional
+
+El usuario puede:
+
+1. Consultar el mapa, la cobertura, la frescura y la procedencia de los datos.
+2. Buscar una calle de Bilbao y comprobar si tiene tráfico medido.
+3. Crear un escenario de cierre total o restricción parcial del tráfico.
+4. Ejecutar la simulación y consultar seis KPIs con valores base y simulados.
+5. Ver las secciones afectadas y cómo se redistribuye el tráfico.
+6. Comparar el escenario con ejemplos de referencia.
+7. Consultar el veredicto de Jev por dimensión, los umbrales, la confianza y
+   las alertas.
+
+Las acciones previstas para una evolución posterior son `bike_lane`,
+`remove_parking` y `speed_change`. El MVP implementa las acciones necesarias
+para demostrar el flujo principal.
+
+### Modelo urbano y simulación
+
+Cada sección puede contener identificador, nombre, geometría, intensidad de
+tráfico, capacidad, velocidad, emisiones, carriles y procedencia. La
+simulación está basada en reglas:
+
+- Al cerrar una calle, su tráfico pasa a cero.
+- El tráfico desplazado se reparte entre calles próximas según capacidad.
+- La restricción parcial conserva el porcentaje permitido configurado.
+- Las emisiones se calculan mediante tráfico, longitud y factor de emisión.
+- Los peatones y la actividad comercial se expresan como índices potenciales
+  configurables, no como mediciones observadas.
+
+El objetivo es demostrar el funcionamiento de extremo a extremo, no producir
+una predicción científica ni un modelo de tráfico calibrado.
+
 ## Arranque
 
 ```powershell
@@ -31,8 +110,10 @@ sin `npm install`**.
 | `/jev` | Jev | Veredicto por dimensión, umbrales aplicados, confianza y alertas |
 
 El escenario se guarda en `localStorage`, así que se puede recorrer el flujo
-entero sin repetir la petición. `map.js` dibuja el plano en SVG con la
-geometría real de las secciones: no depende de un CDN ni de red al verlo.
+entero sin repetir la petición. `map.js` dibuja las geometrías reales de las
+secciones como polilíneas Leaflet sobre OpenStreetMap o Esri World Imagery.
+El mapa requiere conexión para cargar las teselas y conserva ambas capas como
+alternativa.
 
 - Docs interactivas: http://localhost:8000/docs
 - Demo de un clic, dos escenarios ya evaluados: http://localhost:8000/demo
@@ -139,10 +220,10 @@ app/
   engine.py   simulación por reglas
   jev.py      clasificación estructurada
   schemas.py  esquemas y contratos
-  static/     las 5 pantallas + base.css + ui.js + map.js (sin build)
+  static/     las 5 pantallas + base.css + ui.js + map.js
 tests/        49 pruebas, sin red
 scripts/      comprobaciones de las pantallas (requiere Node)
-docs/         arquitectura y definición del reto
+docs/         entregable, arquitectura, definición del reto e imágenes
 ```
 
 ## Verificación
@@ -151,11 +232,10 @@ docs/         arquitectura y definición del reto
 .venv\Scripts\python -m pytest -q       # 49 passed
 .venv\Scripts\python -m ruff check .
 node scripts\check_static.js             # ids e imports de las pantallas
-node scripts\check_map.js                # geometría del SVG del plano
 node scripts\check_screens.js            # render real de las 5 pantallas
 ```
 
-`check_screens.js` y `check_map.js` necesitan el servidor en marcha. Toman la
+`check_screens.js` necesita el servidor en marcha. Toma la
 dirección de `BASE`, por defecto `http://127.0.0.1:8079`:
 
 ```bash
@@ -186,13 +266,21 @@ taskkill /PID <pid> /T /F
 
 - El tráfico se redistribuye **por proximidad y capacidad**, no por conectividad real de cruces. Es una aproximación, no una asignación de viajes.
 - Sin histórico no hay nada que aprender: no hay modelo predictivo, solo reglas.
-- El 25 % de las secciones del feed llega con intensidad 0 (sensor apagado) y hay lecturas de hasta 2016.
+- Algunas secciones del feed llegan con intensidad, velocidad y ocupación a 0;
+  se muestran como lecturas a cero porque no se puede distinguir
+  automáticamente entre ausencia de tráfico y sensor sin dato. También hay
+  lecturas antiguas, incluso de 2016.
 - `Velocidad` en el feed tiene mediana de 1 km/h: no se usa como velocidad real.
 - Comercio y peatones son índices de potencial configurados, no mediciones.
-- Las emisiones **solo bajan si el tráfico sale de la zona**. Sin distancia de desvío real, repartir dentro de la zona se asume de recorrido neutro: si no, el reparto a calles más cortas produciría un ahorro ficticio.
+- Las emisiones se recalculan con el tráfico simulado y la longitud de cada sección. Es una estimación de tramos, no una ruta completa ni una medición ambiental.
+- Como la zona de estudio es una muestra acotada, el 20 % configurable del
+  tráfico desplazado se contabiliza como salida de la zona; el resto se
+  redistribuye entre las vecinas disponibles.
 - Si el tráfico desplazado no cabe en la zona, se declara como `displaced_outside_zone` y se pierde de vista: el impacto sobre el resto de Bilbao queda fuera del alcance.
-- El plano es un **plano de secciones**, no un callejero: sin fondo de calle, sin nombres de edificios y sin nombres de calle sobre el dibujo. Es SVG a propósito, para no depender de un CDN. Un mapa base con Leaflet o MapLibre sería la siguiente capa.
-- Las versiones en euskera y el escudo oficial no están: el selector de idioma muestra EU como pendiente y el escudo es un marcador declarado.
+- El mapa muestra geometrías de secciones y capas base OSM/satélite; no sustituye a
+  un sistema profesional de asignación de viajes ni a un callejero municipal.
+- El feed de cámaras se usa como contexto y no como fuente de intensidad: sus
+  instantáneas no están disponibles y no se incorporan al cálculo.
 
 Nada de esto se presenta como predicción. Cada respuesta lleva `provenance`
 (`REAL` / `DERIVADO` / `SIMULADO`) y el veredicto de Jev lleva un descargo.

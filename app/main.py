@@ -151,10 +151,9 @@ def screen(request: Request) -> FileResponse:
 
 
 @app.get("/favicon.ico", include_in_schema=False)
-@app.get("/favicon.svg", include_in_schema=False)
 def favicon() -> FileResponse:
-    """Icono del sitio, para no dejar un 404 en cada carga de página."""
-    return FileResponse(STATIC_DIR / "favicon.svg", media_type="image/svg+xml")
+    """Sirve el favicon ICO del sitio."""
+    return FileResponse(STATIC_DIR / "favicon.ico", media_type="image/x-icon")
 
 
 @app.get("/health", response_model=HealthResponse, tags=["sistema"])
@@ -339,6 +338,7 @@ def validate_scenario(scenario: Scenario) -> dict[str, Any]:
             "name": section.name,
             "display_name": section.display_name,
             "vehicles_per_hour": section.intensity,
+            "zero_reading": section.intensity == 0,
             "lanes": section.lanes,
             "length_m": section.length_m,
             "observed_at": section.observed_at,

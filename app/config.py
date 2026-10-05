@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
     # --- Fuentes de datos ---
     trafico_url: str = "https://www.bilbao.eus/aytoonline/srvDatasetTrafico?formato=geojson"
-    camaras_url: str = "https://www.bilbao.eus/aytoonline/srvDatasetCamaras?formato=geojson"
+    camaras_url: str = "https://www.bilbao.eus/aytoonline/srvDatasetCamaras?formato=gml&v=1"
     overpass_url: str = "https://overpass-api.de/api/interpreter"
     cache_dir: str = "data"
     #: Registro oficial de calles de Bilbao (cod_calle, nombre, tipo de vía).
@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     neighbour_count: int = 4
     #: Radio máximo (m) para considerar que dos secciones son vecinas.
     neighbour_radius_m: int = 350
+    #: Fracción del tráfico desplazado que se estima que abandona la zona.
+    #: La bbox es una muestra acotada, no una red cerrada de calles.
+    displaced_outside_share: float = 0.20
 
     # --- Parámetros físicos del modelo ---
     #: Capacidad por carril y hora en vía urbana.

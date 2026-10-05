@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Simulación · Peatonalizar calles · Bilbao</title>
 <meta name="description" content="Resultado del motor de reglas para el escenario de pedestrianización elegido, con sus seis indicadores y dónde se concentra el impacto.">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/static/favicon.ico?v=20261005" type="image/x-icon">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:wght@600&display=swap" rel="stylesheet">
@@ -125,8 +125,9 @@ async function render(d) {
     `pesos configurados en <span class="mono">config.py</span>, no del feed de tráfico.`;
 
   /* --- concentración --- */
-  const changed = sim.impacts.filter((i) => Math.abs(i.change_pct) > 0.05);
-  const maxUp = Math.max(0, ...sim.impacts.map((i) => i.change_pct));
+  const impacts = Array.isArray(sim.impacts) ? sim.impacts : [];
+  const changed = impacts.filter((i) => Math.abs(Number(i.change_pct) || 0) > 0.05);
+  const maxUp = Math.max(0, ...impacts.map((i) => Number(i.change_pct) || 0));
   const zone = k.traffic_change;
   $("concentration").innerHTML = `
     <dl class="ficha">
@@ -147,11 +148,13 @@ async function render(d) {
          proporción, así que la media de la zona no engaña en este caso.</p>`}`;
 
   /* --- tabla de impactos --- */
-  const sorted = [...changed].sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct));
+  const sorted = [...impacts].sort(
+    (a, b) => Math.abs(Number(b.change_pct) || 0) - Math.abs(Number(a.change_pct) || 0),
+  );
   $("impacts").className = "scroll tabla-contenedor";
   $("impacts").innerHTML = sorted.length ? `
-    <table>
-      <caption>Secciones cuyo tráfico cambia, ordenadas por magnitud del cambio.</caption>
+    <table class="tabla-demo">
+      <caption>Secciones afectadas por el escenario, ordenadas por magnitud del cambio.</caption>
       <thead><tr>
         <th scope="col">Sección</th>
         <th scope="col">Calle</th>
@@ -168,7 +171,7 @@ async function render(d) {
       <td class="num"><span class="valor ${i.change_pct > 0 ? "sube" : "baja"}">${pct(i.change_pct)}</span></td>
       <td>${esc(i.provenance)}</td>
     </tr>`).join("") + `</tbody></table>`
-    : '<p class="tenue">Ninguna sección cambia. Comprueba que la acción tenga efecto.</p>';
+    : '<p class="tenue">El motor no ha devuelto secciones afectadas para este escenario.</p>';
 
   /* --- notas --- */
   const notes = sim.notes || [];
@@ -184,6 +187,16 @@ async function loadDemo() {
   try {
     const d = await (await fetch("/demo")).json();
     const cur = getScenario();
+    const actionLabel = (scenario) => {
+      if (scenario.action !== "traffic_restriction") {
+        return esc(ACCION_LABEL[scenario.action] || scenario.action);
+      }
+      const allowed = Number(scenario.params?.allowed_ratio);
+      const allowedPct = Number.isFinite(allowed) ? Math.round(allowed * 100) : null;
+      const restrictionPct = allowedPct == null ? null : 100 - allowedPct;
+      return `${esc(ACCION_LABEL[scenario.action])}<br>
+        <small>Permite ${allowedPct}% del tráfico</small>`;
+    };
     $("demo").innerHTML = `
       <p class="tenue">Sobre <b>${esc(d.street.display_name || d.street.name)}</b>,
         sección <span class="mono">${esc(d.street.id)}</span>.</p>
@@ -200,11 +213,11 @@ async function loadDemo() {
           s.scenario.action === cur.action &&
           JSON.stringify(s.scenario.params || {}) === JSON.stringify(cur.params || {});
         return `<tr${isCur ? ' style="background:var(--fondo)"' : ""}>
-          <td>${esc(ACCION_LABEL[s.scenario.action] || s.scenario.action)}${isCur ? " (este)" : ""}</td>
+          <td>${actionLabel(s.scenario)}${isCur ? " (este)" : ""}</td>
           <td class="num">${pct(s.kpis.traffic_change)}</td>
           <td class="num">${pct(s.kpis.emissions_change)}</td>
           <td class="num">${pct(s.kpis.pedestrian_change)}</td>
-          <td>${tag(s.jev.overall_status)}</td></tr>`;
+          <td class="estado-demo">${tag(s.jev.overall_status)}</td></tr>`;
       }).join("") + `</tbody></table>
       <p class="tenue">
         Cobertura de los ejemplos: ${d.coverage.sections_in_zone} secciones,

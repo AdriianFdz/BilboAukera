@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Escenario · Peatonalizar calles · Bilbao</title>
 <meta name="description" content="Qué calle de Bilbao se interviene y con qué acción, sobre las secciones que tienen tráfico medido.">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/static/favicon.ico?v=20261005" type="image/x-icon">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:wght@600&display=swap" rel="stylesheet">
@@ -186,6 +186,12 @@ function renderTarget(d) {
       <dt>Longitud</dt><dd>${Math.round(t.length_m)} m, del perímetro del polígono</dd>
       <dt>Lectura</dt><dd>${t.is_fresh ? "De hoy" : "Antigua"}</dd>
     </dl>
+    ${t.zero_reading ? `<div class="aviso aviso-atencion">
+      <h3>Lectura a cero</h3>
+      <p>El feed oficial ha recibido 0 vehículos/h y también velocidad y ocupación
+      a cero. Puede ser ausencia de tráfico o un sensor sin lectura; no se
+      sustituye por una estimación.</p>
+    </div>` : ""}
     ${t.is_fresh ? "" : `<div class="aviso aviso-atencion">
       <h3>El dato es antiguo</h3>
       <p>Esta sección no tiene lectura de hoy, así que la simulación arranca de

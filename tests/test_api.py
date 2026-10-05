@@ -84,10 +84,10 @@ def test_static_assets_are_served(client) -> None:
 
 def test_favicon_is_served(client) -> None:
     """El navegador pide favicon en cada carga: no debe devolver 404."""
-    for path in ("/favicon.ico", "/favicon.svg"):
+    for path, media_type in (("/favicon.ico", "image/x-icon"),):
         resp = client.get(path)
         assert resp.status_code == 200, path
-        assert "image/svg+xml" in resp.headers["content-type"]
+        assert media_type in resp.headers["content-type"]
 
 
 def test_streets_exposes_full_registry_marking_what_is_simulable(client) -> None:

@@ -5,11 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Datos · Peatonalizar calles · Bilbao</title>
 <meta name="description" content="Cobertura, tráfico medido y procedencia de los datos reales de tráfico de Bilbao para el caso de uso de pedestrianizar una calle.">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/static/favicon.ico?v=20261005" type="image/x-icon">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:wght@600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/base.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
 <main id="principal" class="contenido">
@@ -31,13 +33,19 @@
 
   <section class="bloque">
     <h2>Plano de la zona</h2>
+    <div class="selector-mapa" role="group" aria-label="Fondo del mapa">
+      <button type="button" id="mapa-plano" class="boton-secundario">Plano</button>
+      <button type="button" id="mapa-satelite" class="boton" aria-pressed="true">Satélite</button>
+    </div>
     <div id="mapa" class="mapa cargando">Cargando…</div>
+    <p class="mapa-atribucion">
+      Cartografía: OpenStreetMap. Satélite: Esri World Imagery. Requiere conexión a Internet.
+    </p>
     <div id="leyenda"></div>
     <p class="tenue">
-      Geometría real de las secciones del feed, coloreada por intensidad, con
-      los puntos de observación marcados y su dirección de giro. Es un plano de
-      secciones: no tiene fondo de calle ni nombres de edificios. Al pulsar una
-      sección se abre en <a href="/escenario">Escenario</a> para intervenirla.
+      Las líneas siguen las calles de OpenStreetMap y cambian de color y grosor
+      según los vehículos por hora. Al pulsar una sección se abre en
+      <a href="/escenario">Escenario</a> para intervenirla.
     </p>
   </section>
 
@@ -90,7 +98,7 @@
 
 <script type="module">
 import { $, esc, provenance, renderChrome } from "/static/ui.js";
-import { renderMap, mapLegend } from "/static/map.js";
+import { renderMap, mapLegend, setMapLayer } from "/static/map.js?v=20261011";
 
 renderChrome("/datos", [["Inicio", "/"], ["Datos"]]);
 
@@ -99,6 +107,7 @@ const camResp = await (await fetch("/cameras")).json();
 
 /* --- plano --- */
 $("mapa").className = "mapa";
+$("mapa").replaceChildren();
 $("mapa").appendChild(
   renderMap({
     sections: ciudad.sections,
@@ -107,6 +116,20 @@ $("mapa").appendChild(
     onSelect: (sec) => { location.href = `/escenario?street=${encodeURIComponent(sec.id)}`; },
   }),
 );
+$("mapa-plano").addEventListener("click", () => {
+  setMapLayer($("mapa").firstElementChild, "plan");
+  $("mapa-plano").className = "boton";
+  $("mapa-satelite").className = "boton-secundario";
+  $("mapa-plano").setAttribute("aria-pressed", "true");
+  $("mapa-satelite").setAttribute("aria-pressed", "false");
+});
+$("mapa-satelite").addEventListener("click", () => {
+  setMapLayer($("mapa").firstElementChild, "satellite");
+  $("mapa-plano").className = "boton-secundario";
+  $("mapa-satelite").className = "boton";
+  $("mapa-plano").setAttribute("aria-pressed", "false");
+  $("mapa-satelite").setAttribute("aria-pressed", "true");
+});
 $("leyenda").innerHTML = mapLegend(ciudad.sections, camResp.cameras);
 
 /* --- cobertura --- */
